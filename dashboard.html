@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>لوحة المتابعة</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;600;700&display=swap');
+  :root {
+    --bg:       #080c14;
+    --surface:  #0f1827;
+    --surface2: #141f30;
+    --border:   rgba(255,255,255,.06);
+    --text:     #e2e8f0;
+    --muted:    #64748b;
+    --green:    #22c55e;
+    --blue:     #38bdf8;
+    --yellow:   #fbbf24;
+    --red:      #f87171;
+    --accent:   #3b82f6;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans Arabic', Tahoma, sans-serif;
+    min-height: 100vh;
+    padding: 0 0 40px;
+  }
+
+  /* Header */
+  .topbar {
+    background: linear-gradient(135deg, #0d1a2e 0%, #0f2240 100%);
+    border-bottom: 1px solid rgba(56,189,248,.15);
+    padding: 14px 16px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 50;
+  }
+  .topbar-title { font-size: 16px; font-weight: 700; }
+  .topbar-title span { color: var(--blue); }
+  .topbar-actions { display: flex; gap: 8px; align-items: center; }
+  .badge-time {
+    font-size: 11px; color: var(--muted); padding: 4px 9px;
+    background: rgba(255,255,255,.04); border-radius: 7px;
+    border: 1px solid var(--border);
+  }
+  .btn-refresh {
+    background: rgba(56,189,248,.12); border: 1px solid rgba(56,189,248,.25);
+    color: var(--blue); border-radius: 8px; padding: 6px 12px;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+    font-family: inherit; transition: background .2s;
+  }
+  .btn-refresh:hover { background: rgba(56,189,248,.2); }
+  .btn-refresh:active { opacity: .7; }
+  .btn-refresh.loading { opacity: .5; cursor: default; }
+
+  /* Status bar */
+  .status-bar {
+    padding: 8px 16px; font-size: 12px;
+    display: flex; align-items: center; gap: 7px;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .dot.green { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .dot.red   { background: var(--red); animation: blink 1s infinite; }
+  .dot.yellow{ background: var(--yellow); animation: blink 1.2s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+
+  /* Content */
+  .content { padding: 0 14px; }
+
+  /* Section title */
+  .section-title {
+    font-size: 11px; color: var(--muted); letter-spacing: .08em;
+    text-transform: uppercase; margin: 18px 0 8px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .section-title::after {
+    content: ''; flex: 1; height: 1px; background: var(--border);
+  }
+
+  /* KPI cards */
+  .kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .kpi-card {
+    background: var(--surface); border-radius: 14px;
+    padding: 14px; border: 1px solid var(--border);
+    position: relative; overflow: hidden;
+    animation: fadeUp .4s ease both;
+  }
+  .kpi-card::before {
+    content: ''; position: absolute; top: 0; right: 0;
+    width: 60px; height: 60px; border-radius: 50%;
+    transform: translate(20px, -20px);
+    opacity: .12;
+  }
+  .kpi-card.green-glow::before { background: var(--green); }
+  .kpi-card.blue-glow::before  { background: var(--blue); }
+  .kpi-card.yellow-glow::before{ background: var(--yellow); }
+  .kpi-card.red-glow::before   { background: var(--red); }
+
+  .kpi-icon  { font-size: 20px; margin-bottom: 8px; }
+  .kpi-label { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .kpi-value { font-size: 22px; font-weight: 700; line-height: 1; }
+  .kpi-sub   { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .kpi-value.green  { color: var(--green); }
+  .kpi-value.blue   { color: var(--blue); }
+  .kpi-value.yellow { color: var(--yellow); }
+  .kpi-value.red    { color: var(--red); }
+
+  /* Wide card */
+  .wide-card {
+    background: var(--surface); border-radius: 14px;
+    padding: 14px; border: 1px solid var(--border);
+    animation: fadeUp .4s ease both;
+  }
+  .wide-card-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 12px;
+  }
+  .wide-card-header h3 { font-size: 14px; font-weight: 600; }
+  .badge {
+    font-size: 11px; padding: 3px 8px; border-radius: 6px;
+    font-weight: 600;
+  }
+  .badge.warn { background: rgba(251,191,36,.15); color: var(--yellow); }
+  .badge.ok   { background: rgba(34,197,94,.12);  color: var(--green); }
+
+  /* Progress bar */
+  .progress-wrap { margin-bottom: 10px; }
+  .progress-label { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px; }
+  .progress-label span:last-child { color: var(--muted); }
+  .progress-bar { height: 6px; background: var(--surface2); border-radius: 4px; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 4px; transition: width .6s ease; }
+
+  /* Stock rows */
+  .stock-row {
+    display: flex; align-items: center; gap-8px;
+    padding: 9px 10px; border-radius: 9px;
+    margin-bottom: 6px; gap: 8px;
+    background: var(--surface2);
+    animation: fadeUp .4s ease both;
+  }
+  .stock-row:last-child { margin-bottom: 0; }
+  .stock-icon { font-size: 16px; flex-shrink: 0; }
+  .stock-info { flex: 1; min-width: 0; }
+  .stock-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stock-meta { font-size: 11px; color: var(--muted); }
+  .stock-qty  { font-size: 16px; font-weight: 700; flex-shrink: 0; }
+  .stock-qty.critical { color: var(--red); }
+  .stock-qty.warn     { color: var(--yellow); }
+
+  /* Error / loading */
+  .state-box {
+    background: var(--surface); border-radius: 14px;
+    padding: 30px 16px; text-align: center;
+    border: 1px solid var(--border);
+  }
+  .state-box .icon { font-size: 36px; margin-bottom: 10px; }
+  .state-box p     { color: var(--muted); font-size: 14px; }
+  .skeleton {
+    background: linear-gradient(90deg, var(--surface) 25%, var(--surface2) 50%, var(--surface) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.2s infinite; border-radius: 10px;
+  }
+  @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+  .skel-kpi   { height: 90px; }
+  .skel-wide  { height: 140px; margin-bottom: 10px; }
+
+  @keyframes fadeUp {
+    from { opacity:0; transform:translateY(12px); }
+    to   { opacity:1; transform:translateY(0); }
+  }
+
+  /* Bottom link */
+  .bottom-link {
+    text-align: center; padding: 20px 0 0;
+  }
+  .bottom-link a {
+    font-size: 13px; color: var(--blue);
+    text-decoration: none; opacity: .7;
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-title">📊 <span>لوحة المتابعة</span></div>
+  <div class="topbar-actions">
+    <div class="badge-time" id="lastUpdate">—</div>
+    <button class="btn-refresh" id="btnRefresh" onclick="loadDashboard()">↻ تحديث</button>
+  </div>
+</div>
+
+<div class="status-bar">
+  <div class="dot yellow" id="statusDot"></div>
+  <span id="statusTxt">جاري الاتصال بالـ POS...</span>
+</div>
+
+<div class="content" id="content">
+  <!-- skeleton -->
+  <div class="section-title">📦 ملخص اليوم</div>
+  <div class="kpi-grid">
+    <div class="skeleton skel-kpi"></div>
+    <div class="skeleton skel-kpi"></div>
+    <div class="skeleton skel-kpi"></div>
+    <div class="skeleton skel-kpi"></div>
+  </div>
+  <div class="section-title">📈 الأرباح</div>
+  <div class="skeleton skel-wide"></div>
+  <div class="section-title">⚠️ مخزون منخفض</div>
+  <div class="skeleton skel-wide"></div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+  const roomId = location.pathname.split('/').pop();
+
+  // الـ relay URL هو نفس الموقع الحالي
+  const RELAY = location.origin;
+
+  function fmt(n) {
+    return Number(n || 0).toLocaleString('ar-DZ', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+  }
+  function nowTime() {
+    const t = new Date();
+    return [t.getHours(), t.getMinutes(), t.getSeconds()]
+      .map(n => String(n).padStart(2,'0')).join(':');
+  }
+
+  async function loadDashboard() {
+    const btn = document.getElementById('btnRefresh');
+    btn.classList.add('loading'); btn.disabled = true;
+    setStatus('yellow', 'جاري التحديث...');
+    try {
+      const res = await fetch(`${RELAY}/api/dashboard/${roomId}`, {
+        signal: AbortSignal.timeout(12000)
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const d = await res.json();
+      renderDashboard(d);
+      setStatus('green', 'متصل • آخر تحديث ' + nowTime());
+      document.getElementById('lastUpdate').textContent = nowTime();
+    } catch(e) {
+      let msg = e.message || 'خطأ غير معروف';
+      if (e.name === 'TimeoutError') msg = 'انتهى وقت الانتظار — الـ POS غير متصل';
+      setStatus('red', '❌ ' + msg);
+      renderError(msg);
+    } finally {
+      btn.classList.remove('loading'); btn.disabled = false;
+    }
+  }
+
+  function setStatus(color, txt) {
+    document.getElementById('statusDot').className = 'dot ' + color;
+    document.getElementById('statusTxt').textContent = txt;
+  }
+
+  function renderError(msg) {
+    document.getElementById('content').innerHTML = `
+      <div class="state-box" style="margin-top:20px">
+        <div class="icon">📡</div>
+        <p>${msg}</p>
+        <p style="margin-top:8px;font-size:12px">تأكد أن برنامج الـ POS يعمل على الكمبيوتر</p>
+      </div>`;
+  }
+
+  function renderDashboard(d) {
+    const sales = d.today_sales_count || 0;
+    const revenue = d.today_revenue || 0;
+    const profit_day = d.today_profit || 0;
+    const profit_month = d.month_profit || 0;
+    const month_revenue = d.month_revenue || 0;
+    const low_stock = d.low_stock || [];
+    const currency = d.currency || 'DA';
+
+    // margin %
+    const margin = revenue > 0 ? ((profit_day / revenue) * 100).toFixed(1) : '0.0';
+    const month_margin = month_revenue > 0 ? ((profit_month / month_revenue) * 100).toFixed(1) : '0.0';
+
+    // بناء HTML
+    let html = '';
+
+    // ── اليوم ──────────────────────────────────────────────────────────────
+    html += `<div class="section-title">📦 ملخص اليوم</div>`;
+    html += `<div class="kpi-grid">`;
+
+    html += kpiCard('💰', 'إيرادات اليوم', fmt(revenue) + ' ' + currency, '', 'blue-glow', 'blue');
+    html += kpiCard('🧾', 'عدد الفواتير', sales, sales > 0 ? 'فاتورة' : '', 'green-glow', 'green');
+    html += kpiCard('📈', 'ربح اليوم', fmt(profit_day) + ' ' + currency, `هامش ${margin}%`, 'yellow-glow', profit_day >= 0 ? 'yellow' : 'red');
+    html += kpiCard('🏪', 'ربح الشهر', fmt(profit_month) + ' ' + currency, `هامش ${month_margin}%`, 'green-glow', profit_month >= 0 ? 'green' : 'red');
+
+    html += `</div>`;
+
+    // ── تقدم الشهر ─────────────────────────────────────────────────────────
+    const dayOfMonth = new Date().getDate();
+    const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth()+1, 0).getDate();
+    const monthPct = Math.round((dayOfMonth / daysInMonth) * 100);
+    const dailyAvg = dayOfMonth > 0 ? profit_month / dayOfMonth : 0;
+    const projected = Math.round(dailyAvg * daysInMonth);
+
+    html += `<div class="section-title">📈 تحليل الشهر</div>`;
+    html += `<div class="wide-card">
+      <div class="wide-card-header">
+        <h3>تقدم الشهر</h3>
+        <span class="badge ok">${dayOfMonth} / ${daysInMonth} يوم</span>
+      </div>
+      <div class="progress-wrap">
+        <div class="progress-label"><span>الأيام المنقضية</span><span>${monthPct}%</span></div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${monthPct}%;background:var(--blue)"></div></div>
+      </div>
+      <div class="progress-wrap">
+        <div class="progress-label"><span>إيرادات الشهر</span><span>${fmt(month_revenue)} ${currency}</span></div>
+        <div class="progress-bar"><div class="progress-fill" style="width:100%;background:var(--accent)"></div></div>
+      </div>
+      <div style="margin-top:10px;padding:10px;background:var(--surface2);border-radius:10px;font-size:13px;display:flex;justify-content:space-between;align-items:center;">
+        <span style="color:var(--muted)">الربح المتوقع (نهاية الشهر)</span>
+        <span style="font-weight:700;color:var(--yellow)">${fmt(projected)} ${currency}</span>
+      </div>
+    </div>`;
+
+    // ── مخزون منخفض ────────────────────────────────────────────────────────
+    html += `<div class="section-title">⚠️ مخزون منخفض</div>`;
+    if (low_stock.length === 0) {
+      html += `<div class="wide-card">
+        <div style="text-align:center;padding:20px 0;color:var(--green);font-size:15px">
+          ✅ كل المنتجات بمخزون جيد
+        </div>
+      </div>`;
+    } else {
+      html += `<div class="wide-card">
+        <div class="wide-card-header">
+          <h3>منتجات تحتاج تزويد</h3>
+          <span class="badge warn">${low_stock.length} منتج</span>
+        </div>`;
+      for (const p of low_stock) {
+        const isCritical = p.quantity <= 0;
+        html += `<div class="stock-row">
+          <div class="stock-icon">${isCritical ? '🔴' : '🟡'}</div>
+          <div class="stock-info">
+            <div class="stock-name">${escHtml(p.name)}</div>
+            <div class="stock-meta">الحد الأدنى: ${p.min_stock || p.min_quantity || 5}</div>
+          </div>
+          <div class="stock-qty ${isCritical ? 'critical' : 'warn'}">${p.quantity}</div>
+        </div>`;
+      }
+      html += `</div>`;
+    }
+
+    html += `<div class="bottom-link"><a href="/scanner/${roomId}">📷 العودة للسكانر</a></div>`;
+
+    document.getElementById('content').innerHTML = html;
+  }
+
+  function kpiCard(icon, label, value, sub, glow, color) {
+    return `<div class="kpi-card ${glow}">
+      <div class="kpi-icon">${icon}</div>
+      <div class="kpi-label">${label}</div>
+      <div class="kpi-value ${color}">${value}</div>
+      ${sub ? `<div class="kpi-sub">${sub}</div>` : ''}
+    </div>`;
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // تحميل أول + تحديث تلقائي كل 60 ثانية
+  loadDashboard();
+  setInterval(loadDashboard, 60000);
+  window.loadDashboard = loadDashboard;
+})();
+</script>
+</body>
+</html>
