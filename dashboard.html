@@ -5,369 +5,425 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>لوحة المتابعة</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;600;700&display=swap');
-  :root {
-    --bg:       #080c14;
-    --surface:  #0f1827;
-    --surface2: #141f30;
-    --border:   rgba(255,255,255,.06);
-    --text:     #e2e8f0;
-    --muted:    #64748b;
-    --green:    #22c55e;
-    --blue:     #38bdf8;
-    --yellow:   #fbbf24;
-    --red:      #f87171;
-    --accent:   #3b82f6;
-  }
-  * { box-sizing:border-box; margin:0; padding:0; }
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'IBM Plex Sans Arabic', Tahoma, sans-serif;
-    min-height: 100vh;
-    padding: 0 0 40px;
-  }
+@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&display=swap');
 
-  /* Header */
-  .topbar {
-    background: linear-gradient(135deg, #0d1a2e 0%, #0f2240 100%);
-    border-bottom: 1px solid rgba(56,189,248,.15);
-    padding: 14px 16px;
-    display: flex; align-items: center; justify-content: space-between;
-    position: sticky; top: 0; z-index: 50;
-  }
-  .topbar-title { font-size: 16px; font-weight: 700; }
-  .topbar-title span { color: var(--blue); }
-  .topbar-actions { display: flex; gap: 8px; align-items: center; }
-  .badge-time {
-    font-size: 11px; color: var(--muted); padding: 4px 9px;
-    background: rgba(255,255,255,.04); border-radius: 7px;
-    border: 1px solid var(--border);
-  }
-  .btn-refresh {
-    background: rgba(56,189,248,.12); border: 1px solid rgba(56,189,248,.25);
-    color: var(--blue); border-radius: 8px; padding: 6px 12px;
-    font-size: 13px; font-weight: 600; cursor: pointer;
-    font-family: inherit; transition: background .2s;
-  }
-  .btn-refresh:hover { background: rgba(56,189,248,.2); }
-  .btn-refresh:active { opacity: .7; }
-  .btn-refresh.loading { opacity: .5; cursor: default; }
+:root {
+  --accent:       #2B5CE6;
+  --accent-2:     #1a3a8f;
+  --accent-light: #EEF2FF;
+  --accent-hover: #2250d0;
+  --bg:           #F2F5FC;
+  --surface:      #ffffff;
+  --border:       #DDE3F3;
+  --border-2:     #EEF2FF;
+  --text:         #1A1D2E;
+  --text-2:       #6B7280;
+  --text-3:       #9CA3AF;
+  --danger:       #EF4444;
+  --danger-light: #FEE2E2;
+  --success:      #10B981;
+  --success-light:#DCFCE7;
+  --warn:         #F59E0B;
+  --warn-light:   #FEF3C7;
+  --shadow-sm:    0 1px 3px rgba(43,92,230,0.07);
+  --shadow-md:    0 4px 16px rgba(43,92,230,0.10);
+  --radius-sm:    8px;
+  --radius-md:    12px;
+  --radius-lg:    16px;
+  --cashier-grad: linear-gradient(145deg, #1a3a8f 0%, #2B5CE6 60%, #3b7af8 100%);
+}
 
-  /* Status bar */
-  .status-bar {
-    padding: 8px 16px; font-size: 12px;
-    display: flex; align-items: center; gap: 7px;
-  }
-  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-  .dot.green { background: var(--green); box-shadow: 0 0 6px var(--green); }
-  .dot.red   { background: var(--red); animation: blink 1s infinite; }
-  .dot.yellow{ background: var(--yellow); animation: blink 1.2s infinite; }
-  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+* { box-sizing: border-box; margin: 0; padding: 0; }
 
-  /* Content */
-  .content { padding: 0 14px; }
+body {
+  font-family: 'Tajawal', 'Segoe UI', Tahoma, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  font-size: 14px;
+}
 
-  /* Section title */
-  .section-title {
-    font-size: 11px; color: var(--muted); letter-spacing: .08em;
-    text-transform: uppercase; margin: 18px 0 8px;
-    display: flex; align-items: center; gap: 6px;
-  }
-  .section-title::after {
-    content: ''; flex: 1; height: 1px; background: var(--border);
-  }
+/* ── Header ── */
+.header {
+  background: var(--cashier-grad);
+  color: #fff;
+  padding: 0 16px;
+  height: 54px;
+  display: flex; align-items: center; justify-content: space-between;
+  box-shadow: 0 2px 10px rgba(26,35,126,0.3);
+  position: sticky; top: 0; z-index: 100;
+}
+.header-brand { display: flex; align-items: center; gap: 9px; font-size: 16px; font-weight: 800; }
+.header-brand .logo {
+  width: 32px; height: 32px; border-radius: var(--radius-sm);
+  background: rgba(255,255,255,.2); display: flex; align-items: center; justify-content: center;
+  font-size: 17px;
+}
+.header-right { display: flex; align-items: center; gap: 8px; }
 
-  /* KPI cards */
-  .kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .kpi-card {
-    background: var(--surface); border-radius: 14px;
-    padding: 14px; border: 1px solid var(--border);
-    position: relative; overflow: hidden;
-    animation: fadeUp .4s ease both;
-  }
-  .kpi-card::before {
-    content: ''; position: absolute; top: 0; right: 0;
-    width: 60px; height: 60px; border-radius: 50%;
-    transform: translate(20px, -20px);
-    opacity: .12;
-  }
-  .kpi-card.green-glow::before { background: var(--green); }
-  .kpi-card.blue-glow::before  { background: var(--blue); }
-  .kpi-card.yellow-glow::before{ background: var(--yellow); }
-  .kpi-card.red-glow::before   { background: var(--red); }
+/* ── Connection pill ── */
+.conn-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 11px; border-radius: 20px;
+  font-size: 12px; font-weight: 700;
+  transition: all .3s;
+}
+.conn-pill.connecting { background: rgba(245,158,11,.2);  color: #fde68a; border: 1px solid rgba(245,158,11,.35); }
+.conn-pill.connected  { background: rgba(16,185,129,.2);  color: #6ee7b7; border: 1px solid rgba(16,185,129,.35); }
+.conn-pill.error      { background: rgba(239,68,68,.2);   color: #fca5a5; border: 1px solid rgba(239,68,68,.35); }
+.conn-dot { width: 7px; height: 7px; border-radius: 50%; }
+.connecting .conn-dot { background: #fbbf24; animation: blink 1s infinite; }
+.connected  .conn-dot { background: #34d399; }
+.error      .conn-dot { background: #f87171; animation: blink 1s infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
 
-  .kpi-icon  { font-size: 20px; margin-bottom: 8px; }
-  .kpi-label { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
-  .kpi-value { font-size: 22px; font-weight: 700; line-height: 1; }
-  .kpi-sub   { font-size: 11px; color: var(--muted); margin-top: 4px; }
-  .kpi-value.green  { color: var(--green); }
-  .kpi-value.blue   { color: var(--blue); }
-  .kpi-value.yellow { color: var(--yellow); }
-  .kpi-value.red    { color: var(--red); }
+/* ── Refresh btn ── */
+.btn-refresh {
+  background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.3);
+  color: #fff; border-radius: var(--radius-sm); padding: 7px 13px;
+  font-size: 13px; font-weight: 700; cursor: pointer; font-family: inherit;
+  transition: background .2s;
+}
+.btn-refresh:hover { background: rgba(255,255,255,.25); }
+.btn-refresh:active { opacity: .7; transform: scale(.97); }
+.btn-refresh.loading { opacity: .5; cursor: default; }
 
-  /* Wide card */
-  .wide-card {
-    background: var(--surface); border-radius: 14px;
-    padding: 14px; border: 1px solid var(--border);
-    animation: fadeUp .4s ease both;
-  }
-  .wide-card-header {
-    display: flex; justify-content: space-between; align-items: center;
-    margin-bottom: 12px;
-  }
-  .wide-card-header h3 { font-size: 14px; font-weight: 600; }
-  .badge {
-    font-size: 11px; padding: 3px 8px; border-radius: 6px;
-    font-weight: 600;
-  }
-  .badge.warn { background: rgba(251,191,36,.15); color: var(--yellow); }
-  .badge.ok   { background: rgba(34,197,94,.12);  color: var(--green); }
+/* ── Content ── */
+.content { padding: 14px 14px 40px; max-width: 560px; margin: 0 auto; }
 
-  /* Progress bar */
-  .progress-wrap { margin-bottom: 10px; }
-  .progress-label { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px; }
-  .progress-label span:last-child { color: var(--muted); }
-  .progress-bar { height: 6px; background: var(--surface2); border-radius: 4px; overflow: hidden; }
-  .progress-fill { height: 100%; border-radius: 4px; transition: width .6s ease; }
+/* ── Section title ── */
+.section-title {
+  font-size: 11px; font-weight: 800; color: var(--text-3);
+  text-transform: uppercase; letter-spacing: .06em;
+  margin: 18px 0 10px;
+  display: flex; align-items: center; gap: 7px;
+}
+.section-title::after { content:''; flex:1; height:1.5px; background: var(--border); }
 
-  /* Stock rows */
-  .stock-row {
-    display: flex; align-items: center; gap-8px;
-    padding: 9px 10px; border-radius: 9px;
-    margin-bottom: 6px; gap: 8px;
-    background: var(--surface2);
-    animation: fadeUp .4s ease both;
-  }
-  .stock-row:last-child { margin-bottom: 0; }
-  .stock-icon { font-size: 16px; flex-shrink: 0; }
-  .stock-info { flex: 1; min-width: 0; }
-  .stock-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .stock-meta { font-size: 11px; color: var(--muted); }
-  .stock-qty  { font-size: 16px; font-weight: 700; flex-shrink: 0; }
-  .stock-qty.critical { color: var(--red); }
-  .stock-qty.warn     { color: var(--yellow); }
+/* ── Stats grid ── */
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.stat-card {
+  background: var(--surface);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border);
+  display: flex; align-items: center; gap: 12px;
+  animation: fadeUp .35s ease both;
+}
+.stat-icon {
+  width: 42px; height: 42px; border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; font-size: 19px;
+}
+.stat-icon.blue   { background: var(--accent-light); }
+.stat-icon.green  { background: var(--success-light); }
+.stat-icon.yellow { background: var(--warn-light); }
+.stat-icon.red    { background: var(--danger-light); }
+.s-lbl { font-size: 11px; color: var(--text-3); margin-bottom: 3px; font-weight: 500; }
+.s-val { font-size: 17px; font-weight: 800; }
+.s-val.blue   { color: var(--accent); }
+.s-val.green  { color: var(--success); }
+.s-val.yellow { color: var(--warn); }
+.s-val.red    { color: var(--danger); }
+.s-sub { font-size: 11px; color: var(--text-3); margin-top: 2px; }
 
-  /* Error / loading */
-  .state-box {
-    background: var(--surface); border-radius: 14px;
-    padding: 30px 16px; text-align: center;
-    border: 1px solid var(--border);
-  }
-  .state-box .icon { font-size: 36px; margin-bottom: 10px; }
-  .state-box p     { color: var(--muted); font-size: 14px; }
-  .skeleton {
-    background: linear-gradient(90deg, var(--surface) 25%, var(--surface2) 50%, var(--surface) 75%);
-    background-size: 200% 100%;
-    animation: shimmer 1.2s infinite; border-radius: 10px;
-  }
-  @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
-  .skel-kpi   { height: 90px; }
-  .skel-wide  { height: 140px; margin-bottom: 10px; }
+/* ── Card ── */
+.card {
+  background: var(--surface); border-radius: var(--radius-md);
+  padding: 16px; box-shadow: var(--shadow-sm); border: 1px solid var(--border);
+  animation: fadeUp .35s ease both;
+}
+.card-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 14px;
+}
+.card-header h3 { font-size: 14px; font-weight: 800; }
 
-  @keyframes fadeUp {
-    from { opacity:0; transform:translateY(12px); }
-    to   { opacity:1; transform:translateY(0); }
-  }
+/* ── Badge ── */
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  border-radius: 20px; padding: 3px 10px;
+  font-size: 11px; font-weight: 700;
+}
+.badge-green  { background: var(--success-light); color: var(--success); }
+.badge-orange { background: var(--warn-light);    color: var(--warn); }
+.badge-blue   { background: var(--accent-light);  color: var(--accent); }
 
-  /* Bottom link */
-  .bottom-link {
-    text-align: center; padding: 20px 0 0;
-  }
-  .bottom-link a {
-    font-size: 13px; color: var(--blue);
-    text-decoration: none; opacity: .7;
-  }
+/* ── Progress ── */
+.progress-item { margin-bottom: 12px; }
+.progress-item:last-child { margin-bottom: 0; }
+.progress-labels {
+  display: flex; justify-content: space-between;
+  font-size: 12px; font-weight: 600; margin-bottom: 5px; color: var(--text-2);
+}
+.progress-labels span:last-child { color: var(--text-3); font-weight: 500; }
+.progress-bar { height: 7px; background: var(--bg); border-radius: 20px; overflow: hidden; }
+.progress-fill { height: 100%; border-radius: 20px; transition: width .7s cubic-bezier(.4,0,.2,1); }
+.fill-blue  { background: linear-gradient(90deg, var(--accent-2), var(--accent)); }
+.fill-green { background: linear-gradient(90deg, #059669, var(--success)); }
+
+/* ── Projected box ── */
+.projected-box {
+  background: var(--bg); border-radius: var(--radius-sm);
+  padding: 10px 14px; margin-top: 12px;
+  display: flex; justify-content: space-between; align-items: center;
+  border: 1px solid var(--border);
+}
+.projected-box .lbl { font-size: 12px; color: var(--text-2); font-weight: 600; }
+.projected-box .val { font-size: 15px; font-weight: 800; color: var(--warn); }
+
+/* ── Stock rows ── */
+.stock-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border-2);
+  background: var(--bg);
+  margin-bottom: 7px;
+  animation: fadeUp .35s ease both;
+  transition: box-shadow .15s;
+}
+.stock-row:last-child { margin-bottom: 0; }
+.stock-row:hover { box-shadow: var(--shadow-sm); }
+.stock-dot {
+  width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
+}
+.stock-dot.critical { background: var(--danger); }
+.stock-dot.warn     { background: var(--warn); }
+.stock-info { flex: 1; min-width: 0; }
+.stock-name { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stock-min  { font-size: 11px; color: var(--text-3); margin-top: 1px; }
+.stock-qty  { font-size: 18px; font-weight: 900; flex-shrink: 0; }
+.stock-qty.critical { color: var(--danger); }
+.stock-qty.warn     { color: var(--warn); }
+
+/* ── Empty state ── */
+.empty-state {
+  text-align: center; padding: 24px 16px; color: var(--text-3);
+}
+.empty-state .es-icon { font-size: 30px; margin-bottom: 7px; }
+.empty-state p { font-size: 13px; font-weight: 600; }
+
+/* ── Error state ── */
+.error-state {
+  background: var(--surface); border-radius: var(--radius-md);
+  padding: 30px 16px; text-align: center;
+  border: 1px solid var(--border); box-shadow: var(--shadow-sm);
+  margin-top: 20px;
+}
+.error-state .es-icon { font-size: 36px; margin-bottom: 10px; }
+.error-state p { font-size: 14px; color: var(--text-2); font-weight: 600; margin-bottom: 4px; }
+.error-state .es-hint { font-size: 12px; color: var(--text-3); }
+
+/* ── Skeleton ── */
+.skeleton {
+  background: linear-gradient(90deg, var(--border) 25%, var(--border-2) 50%, var(--border) 75%);
+  background-size: 200% 100%; animation: shimmer 1.3s infinite; border-radius: var(--radius-sm);
+}
+@keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+.skel-stat { height: 74px; border-radius: var(--radius-md); }
+.skel-card { height: 130px; border-radius: var(--radius-md); }
+
+/* ── Bottom link ── */
+.bottom-link {
+  text-align: center; padding: 20px 0 0;
+}
+.bottom-link a {
+  font-size: 13px; color: var(--accent); font-weight: 700;
+  text-decoration: none; opacity: .75;
+}
+.bottom-link a:hover { opacity: 1; }
+
+/* ── Last update ── */
+.last-update { font-size: 11px; color: var(--text-3); text-align: center; padding: 10px 0 0; }
+
+@keyframes fadeUp {
+  from { opacity:0; transform:translateY(10px); }
+  to   { opacity:1; transform:translateY(0); }
+}
 </style>
 </head>
 <body>
 
-<div class="topbar">
-  <div class="topbar-title">📊 <span>لوحة المتابعة</span></div>
-  <div class="topbar-actions">
-    <div class="badge-time" id="lastUpdate">—</div>
-    <button class="btn-refresh" id="btnRefresh" onclick="loadDashboard()">↻ تحديث</button>
+<div class="header">
+  <div class="header-brand">
+    <div class="logo">📊</div>
+    لوحة المتابعة
   </div>
-</div>
-
-<div class="status-bar">
-  <div class="dot yellow" id="statusDot"></div>
-  <span id="statusTxt">جاري الاتصال بالـ POS...</span>
+  <div class="header-right">
+    <div class="conn-pill connecting" id="connPill">
+      <div class="conn-dot"></div>
+      <span id="connTxt">جاري الاتصال...</span>
+    </div>
+    <button class="btn-refresh" id="btnRefresh" onclick="load()">↻ تحديث</button>
+  </div>
 </div>
 
 <div class="content" id="content">
   <!-- skeleton -->
   <div class="section-title">📦 ملخص اليوم</div>
-  <div class="kpi-grid">
-    <div class="skeleton skel-kpi"></div>
-    <div class="skeleton skel-kpi"></div>
-    <div class="skeleton skel-kpi"></div>
-    <div class="skeleton skel-kpi"></div>
+  <div class="stats-grid">
+    <div class="skeleton skel-stat"></div>
+    <div class="skeleton skel-stat"></div>
+    <div class="skeleton skel-stat"></div>
+    <div class="skeleton skel-stat"></div>
   </div>
-  <div class="section-title">📈 الأرباح</div>
-  <div class="skeleton skel-wide"></div>
-  <div class="section-title">⚠️ مخزون منخفض</div>
-  <div class="skeleton skel-wide"></div>
+  <div class="section-title">📈 الشهر</div>
+  <div class="skeleton skel-card"></div>
+  <div class="section-title">⚠️ مخزون</div>
+  <div class="skeleton skel-card"></div>
 </div>
 
 <script>
 (() => {
-  'use strict';
   const roomId = location.pathname.split('/').pop();
 
-  // الـ relay URL هو نفس الموقع الحالي
-  const RELAY = location.origin;
-
   function fmt(n) {
-    return Number(n || 0).toLocaleString('ar-DZ', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+    return Number(n || 0).toLocaleString('ar-DZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
   }
   function nowTime() {
     const t = new Date();
-    return [t.getHours(), t.getMinutes(), t.getSeconds()]
-      .map(n => String(n).padStart(2,'0')).join(':');
+    return [t.getHours(), t.getMinutes(), t.getSeconds()].map(n => String(n).padStart(2,'0')).join(':');
+  }
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
-  async function loadDashboard() {
+  function setConn(state, txt) {
+    const el = document.getElementById('connPill');
+    el.className = 'conn-pill ' + state;
+    el.innerHTML = `<div class="conn-dot"></div><span>${txt}</span>`;
+  }
+
+  async function load() {
     const btn = document.getElementById('btnRefresh');
     btn.classList.add('loading'); btn.disabled = true;
-    setStatus('yellow', 'جاري التحديث...');
+    setConn('connecting', 'جاري التحديث...');
     try {
-      const res = await fetch(`${RELAY}/api/dashboard/${roomId}`, {
-        signal: AbortSignal.timeout(12000)
-      });
+      const res = await fetch(`/api/dashboard/${roomId}`, { signal: AbortSignal.timeout(12000) });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const d = await res.json();
-      renderDashboard(d);
-      setStatus('green', 'متصل • آخر تحديث ' + nowTime());
-      document.getElementById('lastUpdate').textContent = nowTime();
+      if (d.error) throw new Error(d.error);
+      render(d);
+      setConn('connected', '✅ متصل — ' + nowTime());
     } catch(e) {
-      let msg = e.message || 'خطأ غير معروف';
-      if (e.name === 'TimeoutError') msg = 'انتهى وقت الانتظار — الـ POS غير متصل';
-      setStatus('red', '❌ ' + msg);
+      let msg = e.name === 'TimeoutError' ? 'الـ POS لا يستجيب' : (e.message || 'خطأ');
+      setConn('error', '❌ ' + msg);
       renderError(msg);
     } finally {
       btn.classList.remove('loading'); btn.disabled = false;
     }
   }
 
-  function setStatus(color, txt) {
-    document.getElementById('statusDot').className = 'dot ' + color;
-    document.getElementById('statusTxt').textContent = txt;
-  }
-
   function renderError(msg) {
     document.getElementById('content').innerHTML = `
-      <div class="state-box" style="margin-top:20px">
-        <div class="icon">📡</div>
-        <p>${msg}</p>
-        <p style="margin-top:8px;font-size:12px">تأكد أن برنامج الـ POS يعمل على الكمبيوتر</p>
+      <div class="error-state">
+        <div class="es-icon">📡</div>
+        <p>${esc(msg)}</p>
+        <p class="es-hint">تأكد أن البرنامج يعمل على الكمبيوتر</p>
       </div>`;
   }
 
-  function renderDashboard(d) {
+  function render(d) {
+    const cur   = d.currency || 'DA';
     const sales = d.today_sales_count || 0;
-    const revenue = d.today_revenue || 0;
-    const profit_day = d.today_profit || 0;
-    const profit_month = d.month_profit || 0;
-    const month_revenue = d.month_revenue || 0;
-    const low_stock = d.low_stock || [];
-    const currency = d.currency || 'DA';
+    const revD  = d.today_revenue  || 0;
+    const proD  = d.today_profit   || 0;
+    const revM  = d.month_revenue  || 0;
+    const proM  = d.month_profit   || 0;
+    const low   = d.low_stock      || [];
 
-    // margin %
-    const margin = revenue > 0 ? ((profit_day / revenue) * 100).toFixed(1) : '0.0';
-    const month_margin = month_revenue > 0 ? ((profit_month / month_revenue) * 100).toFixed(1) : '0.0';
+    const marginD = revD > 0 ? ((proD / revD) * 100).toFixed(1) : '0.0';
+    const marginM = revM > 0 ? ((proM / revM) * 100).toFixed(1) : '0.0';
 
-    // بناء HTML
-    let html = '';
+    const dayNum   = new Date().getDate();
+    const daysInM  = new Date(new Date().getFullYear(), new Date().getMonth()+1, 0).getDate();
+    const monthPct = Math.round((dayNum / daysInM) * 100);
+    const projected = dayNum > 0 ? Math.round((proM / dayNum) * daysInM) : 0;
 
-    // ── اليوم ──────────────────────────────────────────────────────────────
-    html += `<div class="section-title">📦 ملخص اليوم</div>`;
-    html += `<div class="kpi-grid">`;
+    let h = '';
 
-    html += kpiCard('💰', 'إيرادات اليوم', fmt(revenue) + ' ' + currency, '', 'blue-glow', 'blue');
-    html += kpiCard('🧾', 'عدد الفواتير', sales, sales > 0 ? 'فاتورة' : '', 'green-glow', 'green');
-    html += kpiCard('📈', 'ربح اليوم', fmt(profit_day) + ' ' + currency, `هامش ${margin}%`, 'yellow-glow', profit_day >= 0 ? 'yellow' : 'red');
-    html += kpiCard('🏪', 'ربح الشهر', fmt(profit_month) + ' ' + currency, `هامش ${month_margin}%`, 'green-glow', profit_month >= 0 ? 'green' : 'red');
+    // ── اليوم ──
+    h += `<div class="section-title">📦 ملخص اليوم</div>`;
+    h += `<div class="stats-grid">`;
+    h += statCard('💰', 'blue',   'إيرادات اليوم',   `${fmt(revD)} ${cur}`, '');
+    h += statCard('🧾', 'green',  'عدد الفواتير',    `${sales}`,           sales > 0 ? 'فاتورة' : '');
+    h += statCard('📈', proD >= 0 ? 'yellow' : 'red', 'ربح اليوم', `${fmt(proD)} ${cur}`, `هامش ${marginD}%`);
+    h += statCard('🏪', proM >= 0 ? 'green'  : 'red', 'ربح الشهر',  `${fmt(proM)} ${cur}`, `هامش ${marginM}%`);
+    h += `</div>`;
 
-    html += `</div>`;
-
-    // ── تقدم الشهر ─────────────────────────────────────────────────────────
-    const dayOfMonth = new Date().getDate();
-    const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth()+1, 0).getDate();
-    const monthPct = Math.round((dayOfMonth / daysInMonth) * 100);
-    const dailyAvg = dayOfMonth > 0 ? profit_month / dayOfMonth : 0;
-    const projected = Math.round(dailyAvg * daysInMonth);
-
-    html += `<div class="section-title">📈 تحليل الشهر</div>`;
-    html += `<div class="wide-card">
-      <div class="wide-card-header">
+    // ── الشهر ──
+    h += `<div class="section-title">📈 تحليل الشهر</div>`;
+    h += `<div class="card">
+      <div class="card-header">
         <h3>تقدم الشهر</h3>
-        <span class="badge ok">${dayOfMonth} / ${daysInMonth} يوم</span>
+        <span class="badge badge-blue">${dayNum} / ${daysInM} يوم</span>
       </div>
-      <div class="progress-wrap">
-        <div class="progress-label"><span>الأيام المنقضية</span><span>${monthPct}%</span></div>
-        <div class="progress-bar"><div class="progress-fill" style="width:${monthPct}%;background:var(--blue)"></div></div>
+      <div class="progress-item">
+        <div class="progress-labels"><span>الأيام المنقضية</span><span>${monthPct}%</span></div>
+        <div class="progress-bar"><div class="progress-fill fill-blue" style="width:${monthPct}%"></div></div>
       </div>
-      <div class="progress-wrap">
-        <div class="progress-label"><span>إيرادات الشهر</span><span>${fmt(month_revenue)} ${currency}</span></div>
-        <div class="progress-bar"><div class="progress-fill" style="width:100%;background:var(--accent)"></div></div>
+      <div class="progress-item">
+        <div class="progress-labels"><span>إيرادات الشهر</span><span>${fmt(revM)} ${cur}</span></div>
+        <div class="progress-bar"><div class="progress-fill fill-green" style="width:100%"></div></div>
       </div>
-      <div style="margin-top:10px;padding:10px;background:var(--surface2);border-radius:10px;font-size:13px;display:flex;justify-content:space-between;align-items:center;">
-        <span style="color:var(--muted)">الربح المتوقع (نهاية الشهر)</span>
-        <span style="font-weight:700;color:var(--yellow)">${fmt(projected)} ${currency}</span>
+      <div class="projected-box">
+        <span class="lbl">📊 الربح المتوقع لنهاية الشهر</span>
+        <span class="val">${fmt(projected)} ${cur}</span>
       </div>
     </div>`;
 
-    // ── مخزون منخفض ────────────────────────────────────────────────────────
-    html += `<div class="section-title">⚠️ مخزون منخفض</div>`;
-    if (low_stock.length === 0) {
-      html += `<div class="wide-card">
-        <div style="text-align:center;padding:20px 0;color:var(--green);font-size:15px">
-          ✅ كل المنتجات بمخزون جيد
+    // ── مخزون ──
+    h += `<div class="section-title">⚠️ مخزون منخفض</div>`;
+    if (low.length === 0) {
+      h += `<div class="card">
+        <div class="empty-state">
+          <div class="es-icon">✅</div>
+          <p>كل المنتجات بمخزون جيد</p>
         </div>
       </div>`;
     } else {
-      html += `<div class="wide-card">
-        <div class="wide-card-header">
+      h += `<div class="card">
+        <div class="card-header">
           <h3>منتجات تحتاج تزويد</h3>
-          <span class="badge warn">${low_stock.length} منتج</span>
+          <span class="badge badge-orange">${low.length} منتج</span>
         </div>`;
-      for (const p of low_stock) {
+      for (const p of low) {
         const isCritical = p.quantity <= 0;
-        html += `<div class="stock-row">
-          <div class="stock-icon">${isCritical ? '🔴' : '🟡'}</div>
+        const cls = isCritical ? 'critical' : 'warn';
+        h += `<div class="stock-row">
+          <div class="stock-dot ${cls}"></div>
           <div class="stock-info">
-            <div class="stock-name">${escHtml(p.name)}</div>
-            <div class="stock-meta">الحد الأدنى: ${p.min_stock || p.min_quantity || 5}</div>
+            <div class="stock-name">${esc(p.name)}</div>
+            <div class="stock-min">الحد الأدنى: ${p.min_stock || 5}</div>
           </div>
-          <div class="stock-qty ${isCritical ? 'critical' : 'warn'}">${p.quantity}</div>
+          <div class="stock-qty ${cls}">${p.quantity}</div>
         </div>`;
       }
-      html += `</div>`;
+      h += `</div>`;
     }
 
-    html += `<div class="bottom-link"><a href="/scanner/${roomId}">📷 العودة للسكانر</a></div>`;
+    h += `<div class="last-update">آخر تحديث: ${nowTime()}</div>`;
+    h += `<div class="bottom-link"><a href="/scanner/${roomId}">📷 العودة للسكانر</a></div>`;
 
-    document.getElementById('content').innerHTML = html;
+    document.getElementById('content').innerHTML = h;
   }
 
-  function kpiCard(icon, label, value, sub, glow, color) {
-    return `<div class="kpi-card ${glow}">
-      <div class="kpi-icon">${icon}</div>
-      <div class="kpi-label">${label}</div>
-      <div class="kpi-value ${color}">${value}</div>
-      ${sub ? `<div class="kpi-sub">${sub}</div>` : ''}
+  function statCard(icon, color, lbl, val, sub) {
+    return `<div class="stat-card">
+      <div class="stat-icon ${color}">${icon}</div>
+      <div class="stat-info">
+        <div class="s-lbl">${lbl}</div>
+        <div class="s-val ${color}">${val}</div>
+        ${sub ? `<div class="s-sub">${sub}</div>` : ''}
+      </div>
     </div>`;
   }
 
-  function escHtml(s) {
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  }
-
-  // تحميل أول + تحديث تلقائي كل 60 ثانية
-  loadDashboard();
-  setInterval(loadDashboard, 60000);
-  window.loadDashboard = loadDashboard;
+  // تحميل + تجديد تلقائي كل دقيقة
+  load();
+  setInterval(load, 60000);
+  window.load = load;
 })();
 </script>
 </body>
