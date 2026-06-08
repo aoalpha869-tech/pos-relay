@@ -25,12 +25,15 @@
   --success-light:#DCFCE7;
   --warn:         #F59E0B;
   --warn-light:   #FEF3C7;
+  --purple:       #8B5CF6;
+  --purple-light: #EDE9FE;
   --shadow-sm:    0 1px 3px rgba(43,92,230,0.07);
   --shadow-md:    0 4px 16px rgba(43,92,230,0.10);
   --radius-sm:    8px;
   --radius-md:    12px;
   --radius-lg:    16px;
   --cashier-grad: linear-gradient(145deg, #1a3a8f 0%, #2B5CE6 60%, #3b7af8 100%);
+  --nav-h:        56px;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -48,25 +51,23 @@ body {
   background: var(--cashier-grad);
   color: #fff;
   padding: 0 16px;
-  height: 54px;
+  height: 52px;
   display: flex; align-items: center; justify-content: space-between;
   box-shadow: 0 2px 10px rgba(26,35,126,0.3);
-  position: sticky; top: 0; z-index: 100;
+  position: sticky; top: 0; z-index: 200;
 }
-.header-brand { display: flex; align-items: center; gap: 9px; font-size: 16px; font-weight: 800; }
+.header-brand { display: flex; align-items: center; gap: 9px; font-size: 15px; font-weight: 800; }
 .header-brand .logo {
-  width: 32px; height: 32px; border-radius: var(--radius-sm);
+  width: 30px; height: 30px; border-radius: var(--radius-sm);
   background: rgba(255,255,255,.2); display: flex; align-items: center; justify-content: center;
-  font-size: 17px;
+  font-size: 16px;
 }
 .header-right { display: flex; align-items: center; gap: 8px; }
 
-/* ── Connection pill ── */
 .conn-pill {
   display: inline-flex; align-items: center; gap: 6px;
-  padding: 5px 11px; border-radius: 20px;
-  font-size: 12px; font-weight: 700;
-  transition: all .3s;
+  padding: 4px 10px; border-radius: 20px;
+  font-size: 11px; font-weight: 700; transition: all .3s;
 }
 .conn-pill.connecting { background: rgba(245,158,11,.2);  color: #fde68a; border: 1px solid rgba(245,158,11,.35); }
 .conn-pill.connected  { background: rgba(16,185,129,.2);  color: #6ee7b7; border: 1px solid rgba(16,185,129,.35); }
@@ -77,10 +78,9 @@ body {
 .error      .conn-dot { background: #f87171; animation: blink 1s infinite; }
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
 
-/* ── Refresh btn ── */
 .btn-refresh {
   background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.3);
-  color: #fff; border-radius: var(--radius-sm); padding: 7px 13px;
+  color: #fff; border-radius: var(--radius-sm); padding: 6px 12px;
   font-size: 13px; font-weight: 700; cursor: pointer; font-family: inherit;
   transition: background .2s;
 }
@@ -88,8 +88,30 @@ body {
 .btn-refresh:active { opacity: .7; transform: scale(.97); }
 .btn-refresh.loading { opacity: .5; cursor: default; }
 
-/* ── Content ── */
-.content { padding: 14px 14px 40px; max-width: 560px; margin: 0 auto; }
+/* ── Bottom Navigation ── */
+.bottom-nav {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 200;
+  height: var(--nav-h);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  display: flex;
+  box-shadow: 0 -4px 20px rgba(43,92,230,0.08);
+}
+.nav-item {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px; cursor: pointer; transition: all .2s;
+  font-size: 10px; font-weight: 700; color: var(--text-3);
+  border: none; background: none; font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+.nav-item .nav-icon { font-size: 20px; transition: transform .2s; }
+.nav-item.active { color: var(--accent); }
+.nav-item.active .nav-icon { transform: translateY(-2px); }
+.nav-item:active .nav-icon { transform: scale(.9); }
+
+/* ── Pages ── */
+.page { display: none; padding: 14px 14px calc(var(--nav-h) + 20px); max-width: 560px; margin: 0 auto; }
+.page.active { display: block; }
 
 /* ── Section title ── */
 .section-title {
@@ -99,6 +121,7 @@ body {
   display: flex; align-items: center; gap: 7px;
 }
 .section-title::after { content:''; flex:1; height:1.5px; background: var(--border); }
+.section-title:first-child { margin-top: 4px; }
 
 /* ── Stats grid ── */
 .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -120,12 +143,14 @@ body {
 .stat-icon.green  { background: var(--success-light); }
 .stat-icon.yellow { background: var(--warn-light); }
 .stat-icon.red    { background: var(--danger-light); }
+.stat-icon.purple { background: var(--purple-light); }
 .s-lbl { font-size: 11px; color: var(--text-3); margin-bottom: 3px; font-weight: 500; }
 .s-val { font-size: 17px; font-weight: 800; }
 .s-val.blue   { color: var(--accent); }
 .s-val.green  { color: var(--success); }
 .s-val.yellow { color: var(--warn); }
 .s-val.red    { color: var(--danger); }
+.s-val.purple { color: var(--purple); }
 .s-sub { font-size: 11px; color: var(--text-3); margin-top: 2px; }
 
 /* ── Card ── */
@@ -149,6 +174,8 @@ body {
 .badge-green  { background: var(--success-light); color: var(--success); }
 .badge-orange { background: var(--warn-light);    color: var(--warn); }
 .badge-blue   { background: var(--accent-light);  color: var(--accent); }
+.badge-red    { background: var(--danger-light);  color: var(--danger); }
+.badge-purple { background: var(--purple-light);  color: var(--purple); }
 
 /* ── Progress ── */
 .progress-item { margin-bottom: 12px; }
@@ -160,8 +187,10 @@ body {
 .progress-labels span:last-child { color: var(--text-3); font-weight: 500; }
 .progress-bar { height: 7px; background: var(--bg); border-radius: 20px; overflow: hidden; }
 .progress-fill { height: 100%; border-radius: 20px; transition: width .7s cubic-bezier(.4,0,.2,1); }
-.fill-blue  { background: linear-gradient(90deg, var(--accent-2), var(--accent)); }
-.fill-green { background: linear-gradient(90deg, #059669, var(--success)); }
+.fill-blue   { background: linear-gradient(90deg, var(--accent-2), var(--accent)); }
+.fill-green  { background: linear-gradient(90deg, #059669, var(--success)); }
+.fill-red    { background: linear-gradient(90deg, #b91c1c, var(--danger)); }
+.fill-yellow { background: linear-gradient(90deg, #b45309, var(--warn)); }
 
 /* ── Projected box ── */
 .projected-box {
@@ -176,40 +205,92 @@ body {
 /* ── Stock rows ── */
 .stock-row {
   display: flex; align-items: center; gap: 10px;
-  padding: 10px; border-radius: var(--radius-sm);
-  border: 1px solid var(--border-2);
-  background: var(--bg);
-  margin-bottom: 7px;
-  animation: fadeUp .35s ease both;
+  padding: 10px 12px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border-2); background: var(--bg);
+  margin-bottom: 7px; animation: fadeUp .35s ease both;
   transition: box-shadow .15s;
 }
 .stock-row:last-child { margin-bottom: 0; }
 .stock-row:hover { box-shadow: var(--shadow-sm); }
-.stock-dot {
-  width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
-}
+.stock-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 .stock-dot.critical { background: var(--danger); }
 .stock-dot.warn     { background: var(--warn); }
+.stock-dot.ok       { background: var(--success); }
 .stock-info { flex: 1; min-width: 0; }
 .stock-name { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .stock-min  { font-size: 11px; color: var(--text-3); margin-top: 1px; }
 .stock-qty  { font-size: 18px; font-weight: 900; flex-shrink: 0; }
 .stock-qty.critical { color: var(--danger); }
 .stock-qty.warn     { color: var(--warn); }
+.stock-qty.ok       { color: var(--success); }
 
-/* ── Empty state ── */
-.empty-state {
-  text-align: center; padding: 24px 16px; color: var(--text-3);
+/* ── Debt row ── */
+.debt-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 14px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border-2); background: var(--bg);
+  margin-bottom: 7px; animation: fadeUp .35s ease both;
+  cursor: pointer; transition: box-shadow .15s;
 }
+.debt-row:last-child { margin-bottom: 0; }
+.debt-row:hover { box-shadow: var(--shadow-sm); background: #fff; }
+.debt-avatar {
+  width: 38px; height: 38px; border-radius: 50%;
+  background: var(--accent-light); color: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; font-weight: 900; flex-shrink: 0;
+}
+.debt-info { flex: 1; min-width: 0; }
+.debt-name { font-size: 13px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.debt-phone { font-size: 11px; color: var(--text-3); margin-top: 2px; }
+.debt-amount { text-align: left; flex-shrink: 0; }
+.debt-amount .amt { font-size: 15px; font-weight: 900; color: var(--danger); }
+.debt-amount .lbl { font-size: 10px; color: var(--text-3); text-align: left; }
+
+/* ── Cash history row ── */
+.cash-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border-2); background: var(--bg);
+  margin-bottom: 7px;
+}
+.cash-row:last-child { margin-bottom: 0; }
+.cash-icon { font-size: 20px; flex-shrink: 0; }
+.cash-info { flex: 1; min-width: 0; }
+.cash-desc { font-size: 13px; font-weight: 700; }
+.cash-date { font-size: 11px; color: var(--text-3); margin-top: 1px; }
+.cash-val { font-size: 15px; font-weight: 900; flex-shrink: 0; }
+.cash-val.in  { color: var(--success); }
+.cash-val.out { color: var(--danger); }
+
+/* ── Summary row ── */
+.summary-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 9px 0; border-bottom: 1px solid var(--border-2);
+  font-size: 13px;
+}
+.summary-row:last-child { border-bottom: none; padding-bottom: 0; }
+.summary-row .s-key { color: var(--text-2); font-weight: 600; }
+.summary-row .s-v   { font-weight: 800; }
+
+/* ── Big number ── */
+.big-number-box {
+  background: linear-gradient(135deg, var(--accent-2), var(--accent));
+  border-radius: var(--radius-lg); padding: 20px;
+  color: #fff; text-align: center; margin-bottom: 14px;
+}
+.big-number-box .bn-label { font-size: 12px; opacity: .8; margin-bottom: 6px; font-weight: 600; }
+.big-number-box .bn-value { font-size: 32px; font-weight: 900; letter-spacing: -1px; }
+.big-number-box .bn-sub   { font-size: 12px; opacity: .7; margin-top: 4px; }
+
+/* ── Empty / Error state ── */
+.empty-state { text-align: center; padding: 24px 16px; color: var(--text-3); }
 .empty-state .es-icon { font-size: 30px; margin-bottom: 7px; }
 .empty-state p { font-size: 13px; font-weight: 600; }
-
-/* ── Error state ── */
 .error-state {
   background: var(--surface); border-radius: var(--radius-md);
   padding: 30px 16px; text-align: center;
-  border: 1px solid var(--border); box-shadow: var(--shadow-sm);
-  margin-top: 20px;
+  border: 1px solid var(--border); box-shadow: var(--shadow-sm); margin-top: 20px;
 }
 .error-state .es-icon { font-size: 36px; margin-bottom: 10px; }
 .error-state p { font-size: 14px; color: var(--text-2); font-weight: 600; margin-bottom: 4px; }
@@ -224,21 +305,24 @@ body {
 .skel-stat { height: 74px; border-radius: var(--radius-md); }
 .skel-card { height: 130px; border-radius: var(--radius-md); }
 
-/* ── Bottom link ── */
-.bottom-link {
-  text-align: center; padding: 20px 0 0;
+/* ── Filter bar ── */
+.filter-bar {
+  display: flex; gap: 6px; margin-bottom: 14px; overflow-x: auto; padding-bottom: 2px;
+  -ms-overflow-style: none; scrollbar-width: none;
 }
-.bottom-link a {
-  font-size: 13px; color: var(--accent); font-weight: 700;
-  text-decoration: none; opacity: .75;
+.filter-bar::-webkit-scrollbar { display: none; }
+.filter-btn {
+  padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 700;
+  border: 1.5px solid var(--border); background: var(--surface); color: var(--text-2);
+  cursor: pointer; font-family: inherit; white-space: nowrap; transition: all .15s;
 }
-.bottom-link a:hover { opacity: 1; }
+.filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 
 /* ── Last update ── */
 .last-update { font-size: 11px; color: var(--text-3); text-align: center; padding: 10px 0 0; }
 
 @keyframes fadeUp {
-  from { opacity:0; transform:translateY(10px); }
+  from { opacity:0; transform:translateY(8px); }
   to   { opacity:1; transform:translateY(0); }
 }
 </style>
@@ -255,29 +339,106 @@ body {
       <div class="conn-dot"></div>
       <span id="connTxt">جاري الاتصال...</span>
     </div>
-    <button class="btn-refresh" id="btnRefresh" onclick="load()">↻ تحديث</button>
+    <button class="btn-refresh" id="btnRefresh" onclick="loadAll()">↻</button>
   </div>
 </div>
 
-<div class="content" id="content">
-  <!-- skeleton -->
+<!-- ─── Page: الرئيسية ─── -->
+<div class="page active" id="page-home">
   <div class="section-title">📦 ملخص اليوم</div>
-  <div class="stats-grid">
-    <div class="skeleton skel-stat"></div>
-    <div class="skeleton skel-stat"></div>
-    <div class="skeleton skel-stat"></div>
-    <div class="skeleton skel-stat"></div>
+  <div class="stats-grid" id="home-today">
+    <div class="skeleton skel-stat"></div><div class="skeleton skel-stat"></div>
+    <div class="skeleton skel-stat"></div><div class="skeleton skel-stat"></div>
   </div>
   <div class="section-title">📈 الشهر</div>
-  <div class="skeleton skel-card"></div>
-  <div class="section-title">⚠️ مخزون</div>
-  <div class="skeleton skel-card"></div>
+  <div id="home-month"><div class="skeleton skel-card"></div></div>
+  <div class="section-title">⚠️ مخزون منخفض</div>
+  <div id="home-lowstock"><div class="skeleton skel-card"></div></div>
 </div>
+
+<!-- ─── Page: المخزون ─── -->
+<div class="page" id="page-inventory">
+  <div class="section-title">📦 إجمالي المخزون</div>
+  <div class="stats-grid" id="inv-stats">
+    <div class="skeleton skel-stat"></div><div class="skeleton skel-stat"></div>
+    <div class="skeleton skel-stat"></div><div class="skeleton skel-stat"></div>
+  </div>
+  <div class="section-title">🔴 منتجات بحاجة تزويد</div>
+  <div class="filter-bar">
+    <button class="filter-btn active" onclick="filterInventory('all',this)">الكل</button>
+    <button class="filter-btn" onclick="filterInventory('critical',this)">نفد 🔴</button>
+    <button class="filter-btn" onclick="filterInventory('warn',this)">منخفض 🟡</button>
+    <button class="filter-btn" onclick="filterInventory('ok',this)">جيد ✅</button>
+  </div>
+  <div id="inv-list"><div class="skeleton skel-card"></div></div>
+</div>
+
+<!-- ─── Page: الخزنة ─── -->
+<div class="page" id="page-cash">
+  <div id="cash-balance"></div>
+  <div class="section-title">💳 ملخص الخزنة</div>
+  <div class="stats-grid" id="cash-stats">
+    <div class="skeleton skel-stat"></div><div class="skeleton skel-stat"></div>
+    <div class="skeleton skel-stat"></div><div class="skeleton skel-stat"></div>
+  </div>
+  <div class="section-title">📋 آخر الحركات</div>
+  <div id="cash-history"><div class="skeleton skel-card"></div></div>
+</div>
+
+<!-- ─── Page: التقارير ─── -->
+<div class="page" id="page-reports">
+  <div class="section-title">📅 الفترة الزمنية</div>
+  <div class="filter-bar">
+    <button class="filter-btn active" onclick="filterReports('today',this)">اليوم</button>
+    <button class="filter-btn" onclick="filterReports('week',this)">الأسبوع</button>
+    <button class="filter-btn" onclick="filterReports('month',this)">الشهر</button>
+    <button class="filter-btn" onclick="filterReports('all',this)">الكل</button>
+  </div>
+  <div id="reports-content"><div class="skeleton skel-card" style="height:200px"></div></div>
+</div>
+
+<!-- ─── Page: ديون الزبائن ─── -->
+<div class="page" id="page-debts">
+  <div class="section-title">💰 إجمالي الديون</div>
+  <div id="debts-total"><div class="skeleton skel-stat" style="height:90px;border-radius:12px"></div></div>
+  <div class="section-title">👤 قائمة المديونين</div>
+  <div class="filter-bar">
+    <button class="filter-btn active" onclick="filterDebts('all',this)">الكل</button>
+    <button class="filter-btn" onclick="filterDebts('high',this)">أكبر دين</button>
+    <button class="filter-btn" onclick="filterDebts('recent',this)">الأحدث</button>
+  </div>
+  <div id="debts-list"><div class="skeleton skel-card"></div></div>
+</div>
+
+<!-- ─── Bottom Navigation ─── -->
+<nav class="bottom-nav">
+  <button class="nav-item active" onclick="goPage('home',this)">
+    <span class="nav-icon">🏠</span>الرئيسية
+  </button>
+  <button class="nav-item" onclick="goPage('inventory',this)">
+    <span class="nav-icon">📦</span>المخزون
+  </button>
+  <button class="nav-item" onclick="goPage('cash',this)">
+    <span class="nav-icon">🏦</span>الخزنة
+  </button>
+  <button class="nav-item" onclick="goPage('reports',this)">
+    <span class="nav-icon">📈</span>التقارير
+  </button>
+  <button class="nav-item" onclick="goPage('debts',this)">
+    <span class="nav-icon">💳</span>الديون
+  </button>
+</nav>
 
 <script>
 (() => {
   const roomId = location.pathname.split('/').pop();
+  let _data = null; // cached full data
+  let _reportPeriod = 'today';
+  let _invFilter = 'all';
+  let _debtFilter = 'all';
 
+  // ── utilities ────────────────────────────────────────────────────────────
+  const cur = () => (_data?.currency) || 'DA';
   function fmt(n) {
     return Number(n || 0).toLocaleString('ar-DZ', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
   }
@@ -286,129 +447,79 @@ body {
     return [t.getHours(), t.getMinutes(), t.getSeconds()].map(n => String(n).padStart(2,'0')).join(':');
   }
   function esc(s) {
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+  function today() { return new Date().toISOString().slice(0,10); }
+  function thisMonth() { return new Date().toISOString().slice(0,7); }
+  function startOfWeek() {
+    const d = new Date(); d.setDate(d.getDate() - d.getDay()); d.setHours(0,0,0,0); return d;
   }
 
+  // ── navigation ───────────────────────────────────────────────────────────
+  window.goPage = (name, btn) => {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+    document.getElementById('page-' + name).classList.add('active');
+    btn.classList.add('active');
+    // render that page if data ready
+    if (_data) renderPage(name);
+  };
+
+  // ── connection pill ───────────────────────────────────────────────────────
   function setConn(state, txt) {
     const el = document.getElementById('connPill');
     el.className = 'conn-pill ' + state;
     el.innerHTML = `<div class="conn-dot"></div><span>${txt}</span>`;
   }
 
-  async function load() {
+  // ── load all data ─────────────────────────────────────────────────────────
+  window.loadAll = async () => {
     const btn = document.getElementById('btnRefresh');
     btn.classList.add('loading'); btn.disabled = true;
     setConn('connecting', 'جاري التحديث...');
     try {
-      const res = await fetch(`/api/dashboard/${roomId}`, { signal: AbortSignal.timeout(12000) });
+      const res = await fetch(`/api/dashboard-full/${roomId}`, { signal: AbortSignal.timeout(14000) });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const d = await res.json();
       if (d.error) throw new Error(d.error);
-      render(d);
-      setConn('connected', '✅ متصل — ' + nowTime());
+      _data = d;
+      renderAll();
+      setConn('connected', '✅ ' + nowTime());
     } catch(e) {
-      let msg = e.name === 'TimeoutError' ? 'الـ POS لا يستجيب' : (e.message || 'خطأ');
+      const msg = e.name === 'TimeoutError' ? 'الـ POS لا يستجيب' : (e.message || 'خطأ');
       setConn('error', '❌ ' + msg);
       renderError(msg);
     } finally {
       btn.classList.remove('loading'); btn.disabled = false;
     }
-  }
+  };
 
   function renderError(msg) {
-    document.getElementById('content').innerHTML = `
-      <div class="error-state">
-        <div class="es-icon">📡</div>
-        <p>${esc(msg)}</p>
-        <p class="es-hint">تأكد أن البرنامج يعمل على الكمبيوتر</p>
-      </div>`;
+    ['home-today','home-month','home-lowstock','inv-stats','inv-list','cash-balance',
+     'cash-stats','cash-history','reports-content','debts-total','debts-list'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = `<div class="error-state"><div class="es-icon">📡</div>
+        <p>${esc(msg)}</p><p class="es-hint">تأكد أن البرنامج يعمل</p></div>`;
+    });
   }
 
-  function render(d) {
-    const cur   = d.currency || 'DA';
-    const sales = d.today_sales_count || 0;
-    const revD  = d.today_revenue  || 0;
-    const proD  = d.today_profit   || 0;
-    const revM  = d.month_revenue  || 0;
-    const proM  = d.month_profit   || 0;
-    const low   = d.low_stock      || [];
-
-    const marginD = revD > 0 ? ((proD / revD) * 100).toFixed(1) : '0.0';
-    const marginM = revM > 0 ? ((proM / revM) * 100).toFixed(1) : '0.0';
-
-    const dayNum   = new Date().getDate();
-    const daysInM  = new Date(new Date().getFullYear(), new Date().getMonth()+1, 0).getDate();
-    const monthPct = Math.round((dayNum / daysInM) * 100);
-    const projected = dayNum > 0 ? Math.round((proM / dayNum) * daysInM) : 0;
-
-    let h = '';
-
-    // ── اليوم ──
-    h += `<div class="section-title">📦 ملخص اليوم</div>`;
-    h += `<div class="stats-grid">`;
-    h += statCard('💰', 'blue',   'إيرادات اليوم',   `${fmt(revD)} ${cur}`, '');
-    h += statCard('🧾', 'green',  'عدد الفواتير',    `${sales}`,           sales > 0 ? 'فاتورة' : '');
-    h += statCard('📈', proD >= 0 ? 'yellow' : 'red', 'ربح اليوم', `${fmt(proD)} ${cur}`, `هامش ${marginD}%`);
-    h += statCard('🏪', proM >= 0 ? 'green'  : 'red', 'ربح الشهر',  `${fmt(proM)} ${cur}`, `هامش ${marginM}%`);
-    h += `</div>`;
-
-    // ── الشهر ──
-    h += `<div class="section-title">📈 تحليل الشهر</div>`;
-    h += `<div class="card">
-      <div class="card-header">
-        <h3>تقدم الشهر</h3>
-        <span class="badge badge-blue">${dayNum} / ${daysInM} يوم</span>
-      </div>
-      <div class="progress-item">
-        <div class="progress-labels"><span>الأيام المنقضية</span><span>${monthPct}%</span></div>
-        <div class="progress-bar"><div class="progress-fill fill-blue" style="width:${monthPct}%"></div></div>
-      </div>
-      <div class="progress-item">
-        <div class="progress-labels"><span>إيرادات الشهر</span><span>${fmt(revM)} ${cur}</span></div>
-        <div class="progress-bar"><div class="progress-fill fill-green" style="width:100%"></div></div>
-      </div>
-      <div class="projected-box">
-        <span class="lbl">📊 الربح المتوقع لنهاية الشهر</span>
-        <span class="val">${fmt(projected)} ${cur}</span>
-      </div>
-    </div>`;
-
-    // ── مخزون ──
-    h += `<div class="section-title">⚠️ مخزون منخفض</div>`;
-    if (low.length === 0) {
-      h += `<div class="card">
-        <div class="empty-state">
-          <div class="es-icon">✅</div>
-          <p>كل المنتجات بمخزون جيد</p>
-        </div>
-      </div>`;
-    } else {
-      h += `<div class="card">
-        <div class="card-header">
-          <h3>منتجات تحتاج تزويد</h3>
-          <span class="badge badge-orange">${low.length} منتج</span>
-        </div>`;
-      for (const p of low) {
-        const isCritical = p.quantity <= 0;
-        const cls = isCritical ? 'critical' : 'warn';
-        h += `<div class="stock-row">
-          <div class="stock-dot ${cls}"></div>
-          <div class="stock-info">
-            <div class="stock-name">${esc(p.name)}</div>
-            <div class="stock-min">الحد الأدنى: ${p.min_stock || 5}</div>
-          </div>
-          <div class="stock-qty ${cls}">${p.quantity}</div>
-        </div>`;
-      }
-      h += `</div>`;
-    }
-
-    h += `<div class="last-update">آخر تحديث: ${nowTime()}</div>`;
-    h += `<div class="bottom-link"><a href="/scanner/${roomId}">📷 العودة للسكانر</a></div>`;
-
-    document.getElementById('content').innerHTML = h;
+  // ── render all pages ──────────────────────────────────────────────────────
+  function renderAll() {
+    const activePage = document.querySelector('.page.active')?.id?.replace('page-','') || 'home';
+    renderHome();
+    if (activePage !== 'home') renderPage(activePage);
   }
 
+  function renderPage(name) {
+    if (!_data) return;
+    if (name === 'home')      renderHome();
+    if (name === 'inventory') renderInventory();
+    if (name === 'cash')      renderCash();
+    if (name === 'reports')   renderReports();
+    if (name === 'debts')     renderDebts();
+  }
+
+  // ── stat card helper ──────────────────────────────────────────────────────
   function statCard(icon, color, lbl, val, sub) {
     return `<div class="stat-card">
       <div class="stat-icon ${color}">${icon}</div>
@@ -420,10 +531,343 @@ body {
     </div>`;
   }
 
-  // تحميل + تجديد تلقائي كل دقيقة
-  load();
-  setInterval(load, 60000);
-  window.load = load;
+  // ══════════════════════════════════════════════════════════════════════════
+  // PAGE: الرئيسية
+  // ══════════════════════════════════════════════════════════════════════════
+  function renderHome() {
+    const d = _data;
+    const C = cur();
+    const revD = d.today_revenue || 0;
+    const proD = d.today_profit  || 0;
+    const revM = d.month_revenue || 0;
+    const proM = d.month_profit  || 0;
+    const sales = d.today_sales_count || 0;
+    const marginD = revD > 0 ? ((proD/revD)*100).toFixed(1) : '0.0';
+    const marginM = revM > 0 ? ((proM/revM)*100).toFixed(1) : '0.0';
+    const dayNum  = new Date().getDate();
+    const daysInM = new Date(new Date().getFullYear(), new Date().getMonth()+1, 0).getDate();
+    const monthPct = Math.round((dayNum/daysInM)*100);
+    const projected = dayNum > 0 ? Math.round((proM/dayNum)*daysInM) : 0;
+    const low = d.low_stock || [];
+
+    // today stats
+    let todayHtml = statCard('💰','blue','إيرادات اليوم',`${fmt(revD)} ${C}`,'') +
+      statCard('🧾','green','عدد الفواتير',`${sales}`,sales > 0 ? 'فاتورة' : '') +
+      statCard('📈', proD >= 0 ? 'yellow':'red','ربح اليوم',`${fmt(proD)} ${C}`,`هامش ${marginD}%`) +
+      statCard('🏪', proM >= 0 ? 'green':'red','ربح الشهر',`${fmt(proM)} ${C}`,`هامش ${marginM}%`);
+    document.getElementById('home-today').innerHTML = todayHtml;
+
+    // month card
+    let mHtml = `<div class="card">
+      <div class="card-header"><h3>تقدم الشهر</h3><span class="badge badge-blue">${dayNum}/${daysInM} يوم</span></div>
+      <div class="progress-item">
+        <div class="progress-labels"><span>الأيام المنقضية</span><span>${monthPct}%</span></div>
+        <div class="progress-bar"><div class="progress-fill fill-blue" style="width:${monthPct}%"></div></div>
+      </div>
+      <div class="progress-item">
+        <div class="progress-labels"><span>إيرادات الشهر</span><span>${fmt(revM)} ${C}</span></div>
+        <div class="progress-bar"><div class="progress-fill fill-green" style="width:100%"></div></div>
+      </div>
+      <div class="projected-box">
+        <span class="lbl">📊 الربح المتوقع لنهاية الشهر</span>
+        <span class="val">${fmt(projected)} ${C}</span>
+      </div>
+    </div>`;
+    document.getElementById('home-month').innerHTML = mHtml;
+
+    // low stock
+    let lsHtml;
+    if (low.length === 0) {
+      lsHtml = `<div class="card"><div class="empty-state"><div class="es-icon">✅</div><p>كل المنتجات بمخزون جيد</p></div></div>`;
+    } else {
+      lsHtml = `<div class="card"><div class="card-header"><h3>منتجات تحتاج تزويد</h3><span class="badge badge-orange">${low.length} منتج</span></div>`;
+      for (const p of low.slice(0,5)) {
+        const cls = p.quantity <= 0 ? 'critical' : 'warn';
+        lsHtml += `<div class="stock-row">
+          <div class="stock-dot ${cls}"></div>
+          <div class="stock-info"><div class="stock-name">${esc(p.name)}</div><div class="stock-min">الحد الأدنى: ${p.min_stock||5}</div></div>
+          <div class="stock-qty ${cls}">${p.quantity}</div>
+        </div>`;
+      }
+      if (low.length > 5) lsHtml += `<p style="font-size:12px;color:var(--text-3);text-align:center;margin-top:8px">و ${low.length-5} منتج آخر...</p>`;
+      lsHtml += `</div>`;
+    }
+    document.getElementById('home-lowstock').innerHTML = lsHtml;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PAGE: المخزون
+  // ══════════════════════════════════════════════════════════════════════════
+  window.filterInventory = (f, btn) => {
+    _invFilter = f;
+    document.querySelectorAll('#page-inventory .filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderInventoryList();
+  };
+
+  function renderInventory() {
+    const products = _data.products || [];
+    const C = cur();
+    const total = products.length;
+    const criticalCount = products.filter(p => (p.stock||0) <= 0).length;
+    const warnCount = products.filter(p => (p.stock||0) > 0 && (p.stock||0) <= (p.minStock||5)).length;
+    const totalValue = products.reduce((s,p) => s + (p.stock||0)*(p.costPrice||0), 0);
+    const okCount = total - criticalCount - warnCount;
+
+    document.getElementById('inv-stats').innerHTML =
+      statCard('📦','blue','إجمالي المنتجات',`${total}`,`${okCount} بمخزون جيد`) +
+      statCard('💰','green','قيمة المخزون',`${fmt(totalValue)} ${C}`,'بسعر الشراء') +
+      statCard('🟡','yellow','منخفض المخزون',`${warnCount}`,warnCount > 0 ? 'يحتاج تزويد':'') +
+      statCard('🔴','red','نفد المخزون',`${criticalCount}`,criticalCount > 0 ? 'عاجل':'');
+
+    renderInventoryList();
+  }
+
+  function renderInventoryList() {
+    const products = _data.products || [];
+    let filtered = products;
+    if (_invFilter === 'critical') filtered = products.filter(p => (p.stock||0) <= 0);
+    else if (_invFilter === 'warn') filtered = products.filter(p => (p.stock||0) > 0 && (p.stock||0) <= (p.minStock||5));
+    else if (_invFilter === 'ok')   filtered = products.filter(p => (p.stock||0) > (p.minStock||5));
+
+    // sort: critical first, then warn, then ok
+    filtered = [...filtered].sort((a,b) => {
+      const lvl = p => (p.stock||0) <= 0 ? 0 : (p.stock||0) <= (p.minStock||5) ? 1 : 2;
+      return lvl(a) - lvl(b);
+    });
+
+    if (filtered.length === 0) {
+      document.getElementById('inv-list').innerHTML = `<div class="card"><div class="empty-state"><div class="es-icon">✅</div><p>لا توجد منتجات في هذه الفئة</p></div></div>`;
+      return;
+    }
+
+    let html = `<div class="card"><div class="card-header"><h3>المنتجات (${filtered.length})</h3></div>`;
+    for (const p of filtered) {
+      const qty = p.stock || 0;
+      const min = p.minStock || 5;
+      const cls = qty <= 0 ? 'critical' : qty <= min ? 'warn' : 'ok';
+      html += `<div class="stock-row">
+        <div class="stock-dot ${cls}"></div>
+        <div class="stock-info">
+          <div class="stock-name">${esc(p.name)}</div>
+          <div class="stock-min">الحد الأدنى: ${min} — باركود: ${p.barcode ? esc(p.barcode) : '—'}</div>
+        </div>
+        <div class="stock-qty ${cls}">${qty}</div>
+      </div>`;
+    }
+    html += `</div>`;
+    document.getElementById('inv-list').innerHTML = html;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PAGE: الخزنة
+  // ══════════════════════════════════════════════════════════════════════════
+  function renderCash() {
+    const d = _data;
+    const C = cur();
+    const cashDrawer = parseFloat(d.cash_drawer || 0);
+    const sales = d.sales || [];
+    const purchases = d.purchases || [];
+
+    // revenue collected (paid amounts from sales today)
+    const tdSales = sales.filter(s => s.date && s.date.startsWith(today()));
+    const tdRevenue = tdSales.reduce((s,x) => s + (x.paid||0), 0);
+    const tdPurchases = purchases.filter(p => p.date && p.date.startsWith(today()))
+                                 .reduce((s,p) => s + (p.paid||0), 0);
+    const totalDebt = (d.customers||[]).reduce((s,c) => s + Math.max(0, c.debt||0), 0);
+
+    // big balance box
+    document.getElementById('cash-balance').innerHTML = `
+      <div class="big-number-box">
+        <div class="bn-label">💰 رصيد الخزنة الحالي</div>
+        <div class="bn-value">${fmt(cashDrawer)} ${C}</div>
+        <div class="bn-sub">آخر تحديث: ${nowTime()}</div>
+      </div>`;
+
+    document.getElementById('cash-stats').innerHTML =
+      statCard('📥','green','مقبوضات اليوم',`${fmt(tdRevenue)} ${C}`,'من المبيعات') +
+      statCard('📤','red','مدفوعات اليوم',`${fmt(tdPurchases)} ${C}`,'مشتريات') +
+      statCard('💳','yellow','إجمالي الديون',`${fmt(totalDebt)} ${C}`,'من الزبائن') +
+      statCard('📊','blue','صافي اليوم',`${fmt(tdRevenue-tdPurchases)} ${C}`,'');
+
+    // cash history
+    let cashHistory = [];
+    try { cashHistory = JSON.parse(d.cash_history || '[]'); } catch(e) {}
+
+    let hHtml = `<div class="card"><div class="card-header"><h3>آخر الحركات</h3><span class="badge badge-blue">${cashHistory.length}</span></div>`;
+    if (cashHistory.length === 0) {
+      hHtml += `<div class="empty-state"><div class="es-icon">📋</div><p>لا توجد حركات مسجلة</p></div>`;
+    } else {
+      const recent = [...cashHistory].reverse().slice(0, 20);
+      for (const h of recent) {
+        const isIn = (h.amount||0) >= 0;
+        hHtml += `<div class="cash-row">
+          <div class="cash-icon">${isIn ? '📥' : '📤'}</div>
+          <div class="cash-info">
+            <div class="cash-desc">${esc(h.desc || h.note || (isIn ? 'إيداع' : 'سحب'))}</div>
+            <div class="cash-date">${esc(h.date || '')}</div>
+          </div>
+          <div class="cash-val ${isIn?'in':'out'}">${isIn?'+':''}${fmt(h.amount)} ${C}</div>
+        </div>`;
+      }
+    }
+    hHtml += `</div>`;
+    document.getElementById('cash-history').innerHTML = hHtml;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PAGE: التقارير
+  // ══════════════════════════════════════════════════════════════════════════
+  window.filterReports = (period, btn) => {
+    _reportPeriod = period;
+    document.querySelectorAll('#page-reports .filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    if (_data) renderReports();
+  };
+
+  function filterSalesByPeriod(sales) {
+    const t = today(), m = thisMonth(), sw = startOfWeek();
+    return sales.filter(s => {
+      if (!s.date) return false;
+      const d = new Date(s.date);
+      if (_reportPeriod === 'today') return s.date.startsWith(t);
+      if (_reportPeriod === 'week')  return d >= sw;
+      if (_reportPeriod === 'month') return s.date.startsWith(m);
+      return true;
+    });
+  }
+
+  function renderReports() {
+    const d = _data;
+    const C = cur();
+    const allSales = d.sales || [];
+    const allPurchases = d.purchases || [];
+    const filtered = filterSalesByPeriod(allSales).filter(s => !s.isInitialDebt);
+
+    const revenue = filtered.reduce((s,x) => s + (x.total||0), 0);
+    const paid    = filtered.reduce((s,x) => s + (x.paid||0), 0);
+    const debt    = filtered.reduce((s,x) => s + Math.max(0, (x.total||0)-(x.paid||0)), 0);
+    const returns = filtered.reduce((s,x) => s + (x.returnedTotal||0), 0);
+    const count   = filtered.length;
+
+    // top products
+    const productSales = {};
+    filtered.forEach(s => {
+      (s.items||[]).forEach(item => {
+        if (!item.name) return;
+        if (!productSales[item.name]) productSales[item.name] = { qty:0, rev:0 };
+        productSales[item.name].qty += item.qty || 0;
+        productSales[item.name].rev += item.lineTotal || (item.price*item.qty) || 0;
+      });
+    });
+    const topProducts = Object.entries(productSales)
+      .sort((a,b) => b[1].rev - a[1].rev).slice(0, 5);
+
+    // filter purchases too
+    const sw = startOfWeek(), t = today(), m = thisMonth();
+    const filtPurch = allPurchases.filter(p => {
+      if (!p.date) return false;
+      const d = new Date(p.date);
+      if (_reportPeriod === 'today') return p.date.startsWith(t);
+      if (_reportPeriod === 'week')  return d >= sw;
+      if (_reportPeriod === 'month') return p.date.startsWith(m);
+      return true;
+    });
+    const purchTotal = filtPurch.reduce((s,p) => s + (p.total||0), 0);
+
+    const periodLabel = { today:'اليوم', week:'هذا الأسبوع', month:'هذا الشهر', all:'كل الوقت' }[_reportPeriod];
+
+    let html = `
+      <div class="card" style="margin-bottom:12px">
+        <div class="card-header"><h3>ملخص ${periodLabel}</h3><span class="badge badge-blue">${count} فاتورة</span></div>
+        <div class="summary-row"><span class="s-key">إجمالي المبيعات</span><span class="s-v" style="color:var(--success)">${fmt(revenue)} ${C}</span></div>
+        <div class="summary-row"><span class="s-key">المبالغ المقبوضة</span><span class="s-v" style="color:var(--accent)">${fmt(paid)} ${C}</span></div>
+        <div class="summary-row"><span class="s-key">الديون المتراكمة</span><span class="s-v" style="color:var(--danger)">${fmt(debt)} ${C}</span></div>
+        <div class="summary-row"><span class="s-key">المرتجعات</span><span class="s-v" style="color:var(--warn)">${fmt(returns)} ${C}</span></div>
+        <div class="summary-row"><span class="s-key">المشتريات</span><span class="s-v" style="color:var(--text-2)">${fmt(purchTotal)} ${C}</span></div>
+      </div>`;
+
+    if (topProducts.length > 0) {
+      const maxRev = topProducts[0][1].rev;
+      html += `<div class="card">
+        <div class="card-header"><h3>أكثر المنتجات مبيعاً</h3></div>`;
+      topProducts.forEach(([name, info], i) => {
+        const pct = maxRev > 0 ? Math.round((info.rev/maxRev)*100) : 0;
+        html += `<div class="progress-item">
+          <div class="progress-labels">
+            <span>${i+1}. ${esc(name)}</span>
+            <span>${fmt(info.rev)} ${C} (×${fmt(info.qty)})</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill fill-blue" style="width:${pct}%"></div></div>
+        </div>`;
+      });
+      html += `</div>`;
+    } else {
+      html += `<div class="card"><div class="empty-state"><div class="es-icon">📊</div><p>لا توجد مبيعات في هذه الفترة</p></div></div>`;
+    }
+
+    document.getElementById('reports-content').innerHTML = html;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PAGE: ديون الزبائن
+  // ══════════════════════════════════════════════════════════════════════════
+  window.filterDebts = (f, btn) => {
+    _debtFilter = f;
+    document.querySelectorAll('#page-debts .filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    if (_data) renderDebts();
+  };
+
+  function renderDebts() {
+    const customers = (_data.customers || []).filter(c => (c.debt||0) > 0);
+    const C = cur();
+    const totalDebt = customers.reduce((s,c) => s + (c.debt||0), 0);
+
+    document.getElementById('debts-total').innerHTML = `
+      <div class="big-number-box" style="background:linear-gradient(135deg,#b91c1c,var(--danger))">
+        <div class="bn-label">💳 إجمالي الديون</div>
+        <div class="bn-value">${fmt(totalDebt)} ${C}</div>
+        <div class="bn-sub">${customers.length} زبون مدين</div>
+      </div>`;
+
+    let sorted = [...customers];
+    if (_debtFilter === 'high')   sorted.sort((a,b) => (b.debt||0) - (a.debt||0));
+    else if (_debtFilter === 'recent') sorted.sort((a,b) => {
+      const da = a.lastPayment || '';
+      const db = b.lastPayment || '';
+      return da < db ? 1 : da > db ? -1 : 0;
+    });
+
+    if (sorted.length === 0) {
+      document.getElementById('debts-list').innerHTML = `<div class="card"><div class="empty-state"><div class="es-icon">🎉</div><p>لا توجد ديون مستحقة</p></div></div>`;
+      return;
+    }
+
+    let html = `<div class="card"><div class="card-header"><h3>المديونون (${sorted.length})</h3></div>`;
+    for (const c of sorted) {
+      const initials = (c.name||'?').charAt(0);
+      const debtPct = totalDebt > 0 ? Math.round(((c.debt||0)/totalDebt)*100) : 0;
+      html += `<div class="debt-row">
+        <div class="debt-avatar">${esc(initials)}</div>
+        <div class="debt-info">
+          <div class="debt-name">${esc(c.name)}</div>
+          <div class="debt-phone">${c.phone ? '📞 '+esc(c.phone) : '—'} · ${debtPct}% من الإجمالي</div>
+        </div>
+        <div class="debt-amount">
+          <div class="amt">${fmt(c.debt)} ${C}</div>
+          <div class="lbl">${c.lastPayment ? 'آخر دفع: '+esc(c.lastPayment) : 'لم يدفع'}</div>
+        </div>
+      </div>`;
+    }
+    html += `</div>`;
+    document.getElementById('debts-list').innerHTML = html;
+  }
+
+  // ── start ─────────────────────────────────────────────────────────────────
+  loadAll();
+  setInterval(loadAll, 60000);
+  window.loadAll = loadAll;
 })();
 </script>
 </body>

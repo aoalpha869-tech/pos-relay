@@ -30,28 +30,41 @@ app.get('/dashboard/:roomId', (req, res) => sendFile(res, 'dashboard.html'));
 app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size }));
 app.get('/', (_, res) => res.send('POS Relay Server ✅'));
 
-// ── Dashboard API ─────────────────────────────────────────────────────────────
-// الهاتف يطلب /api/dashboard/:roomId
-// الـ relay يرسل طلب للـ POS عبر WebSocket ثم ينتظر الجواب
+// ── Helper: send WS request to POS and wait for response ─────────────────────
+async function posRequest(room, type, reqId, timeout = 12000) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      room.pendingReqs.delete(reqId);
+      reject(new Error('timeout'));
+    }, timeout);
+    room.pendingReqs.set(reqId, { resolve, reject, timer });
+    room.pos.send(JSON.stringify({ type, reqId }));
+  });
+}
+
+// ── Dashboard API (legacy) ────────────────────────────────────────────────────
 app.get('/api/dashboard/:roomId', async (req, res) => {
   const room = getRoom(req.params.roomId);
-  if (!room.pos || room.pos.readyState !== 1) {
+  if (!room.pos || room.pos.readyState !== 1)
     return res.status(503).json({ error: 'POS غير متصل حالياً' });
-  }
-
   const reqId = Math.random().toString(36).slice(2);
-  const TIMEOUT = 10000; // 10 ثانية
-
   try {
-    const data = await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        room.pendingReqs.delete(reqId);
-        reject(new Error('timeout'));
-      }, TIMEOUT);
+    const data = await posRequest(room, 'dashboard_request', reqId);
+    res.json(data);
+  } catch (e) {
+    res.status(504).json({ error: e.message === 'timeout' ? 'انتهى وقت انتظار الـ POS' : e.message });
+  }
+});
 
-      room.pendingReqs.set(reqId, { resolve, reject, timer });
-      room.pos.send(JSON.stringify({ type: 'dashboard_request', reqId }));
-    });
+// ── Dashboard Full API (new) ──────────────────────────────────────────────────
+// يطلب بيانات كاملة: مبيعات + منتجات + زبائن + مشتريات + خزنة
+app.get('/api/dashboard-full/:roomId', async (req, res) => {
+  const room = getRoom(req.params.roomId);
+  if (!room.pos || room.pos.readyState !== 1)
+    return res.status(503).json({ error: 'POS غير متصل حالياً' });
+  const reqId = Math.random().toString(36).slice(2);
+  try {
+    const data = await posRequest(room, 'dashboard_full_request', reqId, 14000);
     res.json(data);
   } catch (e) {
     res.status(504).json({ error: e.message === 'timeout' ? 'انتهى وقت انتظار الـ POS' : e.message });
@@ -76,10 +89,10 @@ wss.on('connection', (ws, req) => {
     ws.on('message', raw => {
       const txt = raw.toString().trim();
 
-      // هل هو رد dashboard؟
+      // هل هو رد dashboard أو dashboard_full؟
       try {
         const msg = JSON.parse(txt);
-        if (msg.type === 'dashboard_response' && msg.reqId) {
+        if ((msg.type === 'dashboard_response' || msg.type === 'dashboard_full_response') && msg.reqId) {
           const pending = room.pendingReqs.get(msg.reqId);
           if (pending) {
             clearTimeout(pending.timer);
