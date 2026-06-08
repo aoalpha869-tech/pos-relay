@@ -2,15 +2,16 @@ const express = require('express');
 const { WebSocketServer } = require('ws');
 const http = require('http');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
+
+// ── WebSocket على نفس الـ HTTP server (يحل مشكلة 404) ───────────────────────
 const wss = new WebSocketServer({ server });
 
-// ── حالة الاتصالات ──────────────────────────────────────────────────────────
-// roomId → { pos: WebSocket|null, phones: WebSocket[] }
+// ── rooms ────────────────────────────────────────────────────────────────────
 const rooms = new Map();
-
 function getRoom(id) {
   if (!rooms.has(id)) rooms.set(id, { pos: null, phones: [] });
   return rooms.get(id);
@@ -18,65 +19,58 @@ function getRoom(id) {
 
 // ── صفحة السكانر ─────────────────────────────────────────────────────────────
 app.get('/scanner/:roomId', (req, res) => {
-  res.sendFile(path.join(__dirname, 'scanner.html'));
+  const filePath = path.join(__dirname, 'scanner.html');
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).send('scanner.html not found');
+  }
+  res.sendFile(filePath);
 });
 
-app.get('/health', (_, res) => res.json({ ok: true }));
+app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size }));
 
-// ── WebSocket Relay ───────────────────────────────────────────────────────────
+app.get('/', (_, res) => res.send('POS Relay Server is running ✅'));
+
+// ── WebSocket ─────────────────────────────────────────────────────────────────
 wss.on('connection', (ws, req) => {
-  const url = new URL(req.url, 'http://localhost');
-  const role   = url.searchParams.get('role');   // 'pos' أو 'phone'
-  const roomId = url.searchParams.get('room');   // معرف الجلسة
+  const url    = new URL(req.url, 'http://localhost');
+  const role   = url.searchParams.get('role');
+  const roomId = url.searchParams.get('room');
 
   if (!role || !roomId) { ws.close(4000, 'missing role or room'); return; }
 
   const room = getRoom(roomId);
 
   if (role === 'pos') {
-    // ── POS يتصل ──────────────────────────────────────────────────────────
     room.pos = ws;
-    console.log(`[POS] اتصل بالغرفة ${roomId}`);
-    ws.send(JSON.stringify({ type: 'status', msg: 'connected', phones: room.phones.length }));
+    console.log(`[POS] room=${roomId}`);
+    ws.send(JSON.stringify({ type: 'status', msg: 'connected' }));
 
-    ws.on('message', (data) => {
-      // POS يرسل للهواتف (اختياري)
+    ws.on('message', data => {
       room.phones.forEach(p => { if (p.readyState === 1) p.send(data.toString()); });
     });
-
-    ws.on('close', () => {
-      room.pos = null;
-      console.log(`[POS] قطع الاتصال من الغرفة ${roomId}`);
-    });
+    ws.on('close', () => { room.pos = null; });
 
   } else if (role === 'phone') {
-    // ── هاتف يتصل ────────────────────────────────────────────────────────
     room.phones.push(ws);
-    console.log(`[Phone] هاتف جديد في الغرفة ${roomId} (${room.phones.length} هواتف)`);
+    console.log(`[Phone] room=${roomId} phones=${room.phones.length}`);
 
-    // أبلغ POS بوصول هاتف
-    if (room.pos && room.pos.readyState === 1) {
+    if (room.pos?.readyState === 1)
       room.pos.send(JSON.stringify({ type: 'phone_connected', count: room.phones.length }));
-    }
 
-    ws.on('message', (data) => {
+    ws.on('message', data => {
       const txt = data.toString().trim();
       if (!txt) return;
-      console.log(`[Barcode] الغرفة ${roomId}: ${txt}`);
-      // أرسل الباركود للـ POS
-      if (room.pos && room.pos.readyState === 1) {
+      console.log(`[Barcode] room=${roomId} value=${txt}`);
+      if (room.pos?.readyState === 1)
         room.pos.send(JSON.stringify({ type: 'barcode', value: txt }));
-      }
     });
-
     ws.on('close', () => {
       room.phones = room.phones.filter(p => p !== ws);
-      if (room.pos && room.pos.readyState === 1) {
+      if (room.pos?.readyState === 1)
         room.pos.send(JSON.stringify({ type: 'phone_disconnected', count: room.phones.length }));
-      }
     });
   }
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`[Relay] يعمل على المنفذ ${PORT}`));
+server.listen(PORT, () => console.log(`[Relay] port=${PORT}`));
