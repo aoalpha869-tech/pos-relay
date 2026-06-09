@@ -43,10 +43,16 @@ async function initDB() {
       activated_at DATE DEFAULT NULL,
       expires_at   DATE DEFAULT NULL,
       instance_id  TEXT DEFAULT NULL,
-      note         TEXT DEFAULT ''
+      note         TEXT DEFAULT '',
+      revoked      INTEGER NOT NULL DEFAULT 0
     )
   `);
   console.log('[DB] جداول قاعدة البيانات جاهزة');
+
+  // migration: أضف عمود revoked إذا لم يكن موجوداً
+  await pool.query(`
+    ALTER TABLE licenses ADD COLUMN IF NOT EXISTS revoked INTEGER NOT NULL DEFAULT 0
+  `).catch(() => {}); // تجاهل الخطأ لو العمود موجود مسبقاً
 }
 initDB().catch(err => console.error('[DB] فشل إنشاء الجداول:', err.message));
 
@@ -125,6 +131,11 @@ app.post('/api/license/activate', async (req, res) => {
       return res.json({ ok: false, error: 'هذا المفتاح مُستخدم بالفعل على نسخة أخرى' });
     }
 
+    // مفتاح مقطوع → رفض
+    if (lic.revoked) {
+      return res.json({ ok: false, error: 'تم إلغاء هذا الترخيص', revoked: true });
+    }
+
     // أول تفعيل
     const isFirstActivation = !lic.activated_at;
     let expires_at = lic.expires_at;
@@ -188,6 +199,11 @@ app.post('/api/license/verify', async (req, res) => {
     }
 
     const lic = result.rows[0];
+
+    // مفتاح مقطوع → رفض فوري
+    if (lic.revoked) {
+      return res.json({ ok: false, error: 'تم إلغاء هذا الترخيص', revoked: true });
+    }
 
     if (lic.expires_at && lic.expires_at < today()) {
       return res.json({ ok: false, error: 'انتهت صلاحية الترخيص', expired: true });
@@ -276,6 +292,48 @@ app.post('/api/admin/delete', requireAdmin, async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: 'فشل الحذف' });
+  }
+});
+
+/**
+ * POST /api/admin/revoke
+ * قطع الترخيص — يبقى في القاعدة لكن يُرفض عند الاتصال
+ * Body: { admin_password, key }
+ */
+app.post('/api/admin/revoke', requireAdmin, async (req, res) => {
+  const { key } = req.body;
+  if (!key) return res.status(400).json({ error: 'key مطلوب' });
+
+  try {
+    const result = await pool.query(
+      'UPDATE licenses SET revoked = 1 WHERE key = $1 RETURNING key, type, note',
+      [key.toUpperCase().trim()]
+    );
+    if (result.rowCount === 0) return res.json({ ok: false, error: 'المفتاح غير موجود' });
+    res.json({ ok: true, message: 'تم قطع الترخيص — سيُوقف البرنامج عند الاتصال بالإنترنت' });
+  } catch (err) {
+    res.status(500).json({ error: 'فشل قطع الترخيص' });
+  }
+});
+
+/**
+ * POST /api/admin/unrevoke
+ * استعادة ترخيص مقطوع
+ * Body: { admin_password, key }
+ */
+app.post('/api/admin/unrevoke', requireAdmin, async (req, res) => {
+  const { key } = req.body;
+  if (!key) return res.status(400).json({ error: 'key مطلوب' });
+
+  try {
+    const result = await pool.query(
+      'UPDATE licenses SET revoked = 0 WHERE key = $1 RETURNING key',
+      [key.toUpperCase().trim()]
+    );
+    if (result.rowCount === 0) return res.json({ ok: false, error: 'المفتاح غير موجود' });
+    res.json({ ok: true, message: 'تم استعادة الترخيص' });
+  } catch (err) {
+    res.status(500).json({ error: 'فشل استعادة الترخيص' });
   }
 });
 
