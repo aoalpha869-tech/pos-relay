@@ -473,26 +473,82 @@ body {
   }
 
   // ── load all data ─────────────────────────────────────────────────────────
-  window.loadAll = async () => {
+  // ── retry state ──────────────────────────────────────────────────────────
+  let _retryCount = 0;
+  let _retryTimer = null;
+  const RETRY_DELAYS = [5, 10, 20, 30]; // ثواني
+
+  function scheduleRetry() {
+    if (_retryTimer) return;
+    const delay = (RETRY_DELAYS[Math.min(_retryCount, RETRY_DELAYS.length-1)]) * 1000;
+    _retryCount++;
+    setConn('connecting', `⏳ إعادة المحاولة خلال ${delay/1000}ث...`);
+    _retryTimer = setTimeout(() => { _retryTimer = null; loadAll(true); }, delay);
+  }
+
+  window.loadAll = async (isRetry) => {
+    if (!isRetry) { _retryCount = 0; if (_retryTimer) { clearTimeout(_retryTimer); _retryTimer = null; } }
     const btn = document.getElementById('btnRefresh');
     btn.classList.add('loading'); btn.disabled = true;
     setConn('connecting', 'جاري التحديث...');
     try {
-      const res = await fetch(`/api/dashboard-full/${roomId}`, { signal: AbortSignal.timeout(14000) });
+      const res = await fetch(`/api/dashboard-full/${roomId}`, { signal: AbortSignal.timeout(15000) });
+
+      // 503 = POS مقطوع أو الـ server استيقظ للتو
+      if (res.status === 503) {
+        const errData = await res.json().catch(() => ({}));
+        const is503 = true;
+        const retryIn = RETRY_DELAYS[Math.min(_retryCount, RETRY_DELAYS.length-1)];
+        setConn('error', `📡 POS غير متصل — إعادة ${_retryCount+1}`);
+        // إذا عندنا بيانات سابقة، لا تمسح الشاشة
+        if (!_data) renderErrorSoft('البرنامج غير متصل بالإنترنت حالياً', `ستتم إعادة المحاولة خلال ${retryIn} ثانية...`);
+        scheduleRetry();
+        return;
+      }
+
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const d = await res.json();
       if (d.error) throw new Error(d.error);
       _data = d;
+      _retryCount = 0;
       renderAll();
       setConn('connected', '✅ ' + nowTime());
     } catch(e) {
-      const msg = e.name === 'TimeoutError' ? 'الـ POS لا يستجيب' : (e.message || 'خطأ');
-      setConn('error', '❌ ' + msg);
-      renderError(msg);
+      if (e.name === 'AbortError' || e.name === 'TimeoutError') {
+        setConn('error', '⏱ انتهى وقت الاتصال');
+        if (!_data) renderErrorSoft('انتهى وقت الاتصال', 'الـ POS لا يستجيب — ستتم إعادة المحاولة تلقائياً');
+        scheduleRetry();
+      } else if (e.message?.includes('Failed to fetch') || e.message?.includes('NetworkError')) {
+        setConn('error', '🌐 لا يوجد إنترنت');
+        if (!_data) renderErrorSoft('لا يوجد اتصال بالإنترنت', 'ستتم إعادة المحاولة تلقائياً');
+        scheduleRetry();
+      } else {
+        setConn('error', '❌ ' + (e.message || 'خطأ'));
+        if (!_data) renderErrorSoft(e.message || 'خطأ', '');
+        scheduleRetry();
+      }
     } finally {
       btn.classList.remove('loading'); btn.disabled = false;
     }
   };
+
+  // رسالة خطأ ناعمة — لا تمسح البيانات الموجودة على الشاشة
+  function renderErrorSoft(title, hint) {
+    const activePage = document.querySelector('.page.active')?.id?.replace('page-','') || 'home';
+    // فقط إذا الصفحة فارغة (لم تُحمَّل بيانات بعد)
+    const firstCard = document.querySelector('.page.active .stat-card, .page.active .card');
+    if (firstCard) return; // البيانات موجودة، لا تمسح
+    ['home-today','inv-stats','cash-balance','reports-content','debts-total'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el && el.querySelector('.skeleton')) {
+        el.innerHTML = `<div class="error-state">
+          <div class="es-icon">📡</div>
+          <p>${esc(title)}</p>
+          <p class="es-hint">${esc(hint)}</p>
+        </div>`;
+      }
+    });
+  }
 
   function renderError(msg) {
     ['home-today','home-month','home-lowstock','inv-stats','inv-list','cash-balance',
@@ -866,8 +922,8 @@ body {
 
   // ── start ─────────────────────────────────────────────────────────────────
   loadAll();
-  setInterval(loadAll, 60000);
-  window.loadAll = loadAll;
+  // تحديث كل دقيقة — إذا كان POS متصل
+  setInterval(() => { if (!_retryTimer) loadAll(); }, 60000);
 })();
 </script>
 </body>
