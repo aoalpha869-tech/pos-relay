@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>لوحة إدارة التراخيص</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+  background: #0f172a;
+  color: #e2e8f0;
+  min-height: 100vh;
+}
+
+/* ── شاشة تسجيل الدخول ── */
+#loginScreen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+}
+
+.login-card {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 20px;
+  padding: 48px 40px;
+  width: 380px;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+
+.login-icon {
+  font-size: 52px;
+  margin-bottom: 16px;
+}
+
+.login-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin-bottom: 6px;
+}
+
+.login-sub {
+  font-size: 13px;
+  color: #64748b;
+  margin-bottom: 32px;
+}
+
+.login-input {
+  width: 100%;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  padding: 13px 16px;
+  color: #f1f5f9;
+  font-size: 15px;
+  text-align: center;
+  letter-spacing: 3px;
+  outline: none;
+  margin-bottom: 16px;
+  transition: border-color .2s;
+}
+
+.login-input:focus { border-color: #6366f1; }
+
+.login-btn {
+  width: 100%;
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  border: none;
+  border-radius: 10px;
+  padding: 13px;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity .2s;
+}
+
+.login-btn:hover { opacity: 0.9; }
+
+.login-err {
+  color: #f87171;
+  font-size: 13px;
+  margin-top: 12px;
+  min-height: 20px;
+}
+
+/* ── الواجهة الرئيسية ── */
+#mainScreen { display: none; }
+
+.header {
+  background: #1e293b;
+  border-bottom: 1px solid #334155;
+  padding: 16px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.header-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.header-sub { font-size: 12px; color: #64748b; }
+
+.logout-btn {
+  background: #334155;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  color: #94a3b8;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.logout-btn:hover { background: #3f4f66; }
+
+.container { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
+
+/* ── إحصائيات ── */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.stat-card {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 14px;
+  padding: 20px;
+  text-align: center;
+}
+
+.stat-val { font-size: 28px; font-weight: 800; color: #f1f5f9; }
+.stat-label { font-size: 12px; color: #64748b; margin-top: 4px; }
+.stat-card.active .stat-val { color: #34d399; }
+.stat-card.expired .stat-val { color: #f87171; }
+.stat-card.unused .stat-val { color: #fbbf24; }
+
+/* ── إنشاء مفتاح ── */
+.create-section {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 14px;
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+.section-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin-bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.create-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.field-group { display: flex; flex-direction: column; gap: 6px; }
+.field-label { font-size: 12px; color: #64748b; }
+
+.field-select, .field-input {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: #f1f5f9;
+  font-size: 14px;
+  outline: none;
+  transition: border-color .2s;
+}
+
+.field-select:focus, .field-input:focus { border-color: #6366f1; }
+.field-input { min-width: 200px; }
+
+.create-btn {
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  border: none;
+  border-radius: 8px;
+  padding: 10px 24px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity .2s;
+  white-space: nowrap;
+}
+
+.create-btn:hover { opacity: 0.9; }
+.create-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── المفتاح المُنشأ ── */
+.new-key-box {
+  display: none;
+  background: #0f2a1a;
+  border: 1px solid #16a34a;
+  border-radius: 10px;
+  padding: 16px 20px;
+  margin-top: 16px;
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.new-key-box.show { display: flex; }
+
+.new-key-text {
+  font-family: 'Courier New', monospace;
+  font-size: 20px;
+  font-weight: 700;
+  color: #34d399;
+  letter-spacing: 3px;
+}
+
+.copy-btn {
+  background: #16a34a;
+  border: none;
+  border-radius: 7px;
+  padding: 8px 16px;
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background .2s;
+}
+
+.copy-btn:hover { background: #15803d; }
+.copy-btn.copied { background: #0f766e; }
+
+/* ── جدول المفاتيح ── */
+.table-section {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.table-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #334155;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.search-input {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 8px 14px;
+  color: #f1f5f9;
+  font-size: 13px;
+  outline: none;
+  width: 220px;
+  direction: rtl;
+}
+
+.search-input:focus { border-color: #6366f1; }
+
+.refresh-btn {
+  background: #334155;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 14px;
+  color: #94a3b8;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.refresh-btn:hover { background: #3f4f66; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th {
+  padding: 12px 16px;
+  text-align: right;
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 600;
+  background: #162032;
+  border-bottom: 1px solid #334155;
+}
+
+td {
+  padding: 13px 16px;
+  font-size: 13px;
+  border-bottom: 1px solid #1e293b;
+  vertical-align: middle;
+}
+
+tr:hover td { background: #1a2540; }
+
+.key-cell {
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  font-weight: 600;
+  color: #a5b4fc;
+  letter-spacing: 1.5px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.badge-trial    { background: #422006; color: #fbbf24; }
+.badge-annual   { background: #1e3a5f; color: #60a5fa; }
+.badge-lifetime { background: #2d1b69; color: #a78bfa; }
+
+.status-active   { color: #34d399; font-size: 12px; font-weight: 600; }
+.status-expired  { color: #f87171; font-size: 12px; font-weight: 600; }
+.status-unused   { color: #fbbf24; font-size: 12px; font-weight: 600; }
+
+.action-wrap { display: flex; gap: 6px; }
+
+.btn-copy-key {
+  background: #334155;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 10px;
+  color: #94a3b8;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background .15s;
+}
+
+.btn-copy-key:hover { background: #475569; color: #f1f5f9; }
+
+.btn-reset {
+  background: #1c3a5e;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 10px;
+  color: #60a5fa;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.btn-reset:hover { background: #1e4a7a; }
+
+.btn-delete {
+  background: #3b1f1f;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 10px;
+  color: #f87171;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.btn-delete:hover { background: #5c1d1d; }
+
+.empty-row td {
+  text-align: center;
+  color: #475569;
+  padding: 40px;
+  font-size: 14px;
+}
+
+/* ── spinner ── */
+.spinner {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+  vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── toast ── */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(80px);
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  padding: 12px 24px;
+  font-size: 14px;
+  color: #f1f5f9;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  transition: transform .3s cubic-bezier(.22,1,.36,1);
+  z-index: 1000;
+  white-space: nowrap;
+}
+
+.toast.show { transform: translateX(-50%) translateY(0); }
+.toast.success { border-color: #16a34a; color: #34d399; }
+.toast.error   { border-color: #dc2626; color: #f87171; }
+
+@media (max-width: 700px) {
+  .stats { grid-template-columns: repeat(2,1fr); }
+  .create-row { flex-direction: column; }
+  th:nth-child(5), td:nth-child(5),
+  th:nth-child(6), td:nth-child(6) { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- ── شاشة تسجيل الدخول ── -->
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="login-icon">🔐</div>
+    <div class="login-title">لوحة التحكم</div>
+    <div class="login-sub">إدارة مفاتيح الترخيص</div>
+    <input class="login-input" id="passInput" type="password"
+           placeholder="كلمة المرور" onkeydown="if(e.key==='Enter')login()">
+    <button class="login-btn" onclick="login()">دخول</button>
+    <div class="login-err" id="loginErr"></div>
+  </div>
+</div>
+
+<!-- ── الواجهة الرئيسية ── -->
+<div id="mainScreen">
+
+  <div class="header">
+    <div>
+      <div class="header-title">🗝️ إدارة التراخيص</div>
+      <div class="header-sub" id="serverUrl"></div>
+    </div>
+    <button class="logout-btn" onclick="logout()">خروج</button>
+  </div>
+
+  <div class="container">
+
+    <!-- إحصائيات -->
+    <div class="stats">
+      <div class="stat-card">
+        <div class="stat-val" id="statTotal">—</div>
+        <div class="stat-label">إجمالي المفاتيح</div>
+      </div>
+      <div class="stat-card active">
+        <div class="stat-val" id="statActive">—</div>
+        <div class="stat-label">مفعَّلة</div>
+      </div>
+      <div class="stat-card unused">
+        <div class="stat-val" id="statUnused">—</div>
+        <div class="stat-label">غير مستخدمة</div>
+      </div>
+      <div class="stat-card expired">
+        <div class="stat-val" id="statExpired">—</div>
+        <div class="stat-label">منتهية</div>
+      </div>
+    </div>
+
+    <!-- إنشاء مفتاح -->
+    <div class="create-section">
+      <div class="section-title">➕ إنشاء مفتاح جديد</div>
+      <div class="create-row">
+        <div class="field-group">
+          <div class="field-label">نوع الترخيص</div>
+          <select class="field-select" id="licType">
+            <option value="trial">تجربة — 7 أيام</option>
+            <option value="annual" selected>سنوي — 365 يوم</option>
+            <option value="lifetime">مدى الحياة ♾️</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <div class="field-label">ملاحظة (اسم العميل، رقم الطلب...)</div>
+          <input class="field-input" id="licNote" type="text"
+                 placeholder="مثال: محمد — متجر الأمانة — واتساب 0555...">
+        </div>
+        <button class="create-btn" id="createBtn" onclick="createKey()">
+          إنشاء المفتاح
+        </button>
+      </div>
+
+      <div class="new-key-box" id="newKeyBox">
+        <div>
+          <div style="font-size:11px;color:#64748b;margin-bottom:6px">المفتاح الجديد — أرسله للعميل</div>
+          <div class="new-key-text" id="newKeyText"></div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="copy-btn" id="copyBtn" onclick="copyNewKey()">📋 نسخ</button>
+          <button class="copy-btn" style="background:#0f766e" onclick="whatsappKey()">📱 واتساب</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- جدول المفاتيح -->
+    <div class="table-section">
+      <div class="table-header">
+        <div class="section-title" style="margin:0">📋 جميع المفاتيح</div>
+        <div style="display:flex;gap:10px;align-items:center">
+          <input class="search-input" id="searchInput"
+                 placeholder="🔍 بحث..."
+                 oninput="renderTable()">
+          <button class="refresh-btn" onclick="loadLicenses()">↻ تحديث</button>
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>المفتاح</th>
+              <th>النوع</th>
+              <th>الحالة</th>
+              <th>تاريخ الإنشاء</th>
+              <th>تاريخ التفعيل</th>
+              <th>ينتهي</th>
+              <th>الملاحظة</th>
+              <th>إجراءات</th>
+            </tr>
+          </thead>
+          <tbody id="licensesBody">
+            <tr class="empty-row"><td colspan="8">جاري التحميل...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── الإعدادات ───────────────────────────────
+const API = window.location.origin; // نفس السيرفر
+let adminPass = '';
+let allLicenses = [];
+let newKeyForCopy = '';
+
+// ── تسجيل الدخول ──────────────────────────
+async function login() {
+  const pass = document.getElementById('passInput').value.trim();
+  const errEl = document.getElementById('loginErr');
+  if (!pass) { errEl.textContent = 'أدخل كلمة المرور'; return; }
+
+  errEl.textContent = 'جاري التحقق...';
+
+  try {
+    const res = await api('/api/admin/list', { admin_password: pass });
+    if (res.ok) {
+      adminPass = pass;
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('mainScreen').style.display = 'block';
+      document.getElementById('serverUrl').textContent = API;
+      allLicenses = res.licenses || [];
+      renderStats();
+      renderTable();
+    } else {
+      errEl.textContent = '⛔ ' + (res.error || 'كلمة مرور غير صحيحة');
+    }
+  } catch (e) {
+    errEl.textContent = '⛔ لا يمكن الاتصال بالسيرفر';
+  }
+}
+
+function logout() {
+  adminPass = '';
+  allLicenses = [];
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('mainScreen').style.display = 'none';
+  document.getElementById('passInput').value = '';
+  document.getElementById('loginErr').textContent = '';
+}
+
+// ── API helper ────────────────────────────
+async function api(endpoint, body) {
+  const res = await fetch(API + endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  return res.json();
+}
+
+// ── تحميل المفاتيح ─────────────────────────
+async function loadLicenses() {
+  try {
+    const res = await api('/api/admin/list', { admin_password: adminPass });
+    if (res.ok) {
+      allLicenses = res.licenses || [];
+      renderStats();
+      renderTable();
+    }
+  } catch(e) {
+    showToast('خطأ في تحميل البيانات', 'error');
+  }
+}
+
+// ── إحصائيات ──────────────────────────────
+function renderStats() {
+  const today = new Date().toISOString().slice(0, 10);
+  let active = 0, unused = 0, expired = 0;
+  for (const l of allLicenses) {
+    if (!l.activated_at) { unused++; }
+    else if (l.expires_at && l.expires_at < today) { expired++; }
+    else { active++; }
+  }
+  document.getElementById('statTotal').textContent   = allLicenses.length;
+  document.getElementById('statActive').textContent  = active;
+  document.getElementById('statUnused').textContent  = unused;
+  document.getElementById('statExpired').textContent = expired;
+}
+
+// ── جدول ──────────────────────────────────
+function renderTable() {
+  const q = document.getElementById('searchInput').value.toLowerCase().trim();
+  const today = new Date().toISOString().slice(0, 10);
+  const tbody = document.getElementById('licensesBody');
+
+  let rows = allLicenses.filter(l =>
+    !q ||
+    l.key.toLowerCase().includes(q) ||
+    (l.note || '').toLowerCase().includes(q) ||
+    l.type.toLowerCase().includes(q)
+  );
+
+  if (rows.length === 0) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="8">لا توجد مفاتيح</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(l => {
+    const typeLabel = { trial: 'تجربة', annual: 'سنوي', lifetime: 'مدى الحياة' }[l.type] || l.type;
+    const typeClass = `badge badge-${l.type}`;
+
+    let statusHtml;
+    if (!l.activated_at) {
+      statusHtml = '<span class="status-unused">● غير مستخدم</span>';
+    } else if (l.expires_at && l.expires_at < today) {
+      statusHtml = '<span class="status-expired">● منتهي</span>';
+    } else {
+      const daysLeft = l.expires_at
+        ? Math.max(0, Math.ceil((new Date(l.expires_at) - new Date(today)) / 86400000))
+        : '♾';
+      statusHtml = `<span class="status-active">● مفعَّل (${daysLeft} يوم)</span>`;
+    }
+
+    const note = escHtml(l.note || '—');
+    const createdAt   = l.created_at   ? l.created_at.slice(0,10)   : '—';
+    const activatedAt = l.activated_at ? l.activated_at.slice(0,10) : '—';
+    const expiresAt   = l.expires_at   ? l.expires_at.slice(0,10)   : (l.type === 'lifetime' ? '♾️' : '—');
+
+    return `<tr>
+      <td class="key-cell">${l.key}</td>
+      <td><span class="${typeClass}">${typeLabel}</span></td>
+      <td>${statusHtml}</td>
+      <td>${createdAt}</td>
+      <td>${activatedAt}</td>
+      <td>${expiresAt}</td>
+      <td style="color:#94a3b8;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${note}">${note}</td>
+      <td>
+        <div class="action-wrap">
+          <button class="btn-copy-key" onclick="copyKey('${l.key}')">نسخ</button>
+          ${l.activated_at ? `<button class="btn-reset" onclick="resetKey('${l.key}')">إعادة تعيين</button>` : ''}
+          <button class="btn-delete" onclick="deleteKey('${l.key}')">حذف</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── إنشاء مفتاح ─────────────────────────
+async function createKey() {
+  const type = document.getElementById('licType').value;
+  const note = document.getElementById('licNote').value.trim();
+  const btn  = document.getElementById('createBtn');
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> جاري الإنشاء...';
+
+  try {
+    const res = await api('/api/admin/create', {
+      admin_password: adminPass,
+      type,
+      note
+    });
+
+    if (res.ok && res.key) {
+      newKeyForCopy = res.key;
+      document.getElementById('newKeyText').textContent = res.key;
+      document.getElementById('newKeyBox').classList.add('show');
+      document.getElementById('copyBtn').textContent = '📋 نسخ';
+      document.getElementById('copyBtn').classList.remove('copied');
+      document.getElementById('licNote').value = '';
+      showToast('تم إنشاء المفتاح بنجاح ✓', 'success');
+      await loadLicenses();
+    } else {
+      showToast(res.error || 'فشل الإنشاء', 'error');
+    }
+  } catch(e) {
+    showToast('خطأ في الاتصال', 'error');
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = 'إنشاء المفتاح';
+}
+
+function copyNewKey() {
+  navigator.clipboard.writeText(newKeyForCopy).then(() => {
+    const btn = document.getElementById('copyBtn');
+    btn.textContent = '✓ تم النسخ';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = '📋 نسخ'; btn.classList.remove('copied'); }, 2000);
+  });
+}
+
+function whatsappKey() {
+  const typeMap = { trial: 'تجربة 7 أيام', annual: 'اشتراك سنوي', lifetime: 'مدى الحياة' };
+  const type = document.getElementById('licType').value;
+  const msg = `🔑 مفتاح تفعيل برنامج نقطة البيع\n\nالنوع: ${typeMap[type] || type}\nالمفتاح:\n${newKeyForCopy}\n\nشكراً لثقتكم بنا 🙏`;
+  window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+}
+
+// ── نسخ مفتاح من الجدول ──────────────────
+function copyKey(key) {
+  navigator.clipboard.writeText(key).then(() => {
+    showToast('تم نسخ المفتاح ✓', 'success');
+  });
+}
+
+// ── إعادة تعيين instance ─────────────────
+async function resetKey(key) {
+  if (!confirm(`هل تريد إعادة تعيين المفتاح:\n${key}\n\nسيتمكن من التفعيل على جهاز جديد`)) return;
+
+  try {
+    const res = await api('/api/admin/reset-instance', {
+      admin_password: adminPass,
+      key
+    });
+    if (res.ok) {
+      showToast('تم إعادة التعيين ✓', 'success');
+      await loadLicenses();
+    } else {
+      showToast(res.error || 'فشل إعادة التعيين', 'error');
+    }
+  } catch(e) {
+    showToast('خطأ في الاتصال', 'error');
+  }
+}
+
+// ── حذف مفتاح ────────────────────────────
+async function deleteKey(key) {
+  if (!confirm(`هل تريد حذف المفتاح:\n${key}\n\nلا يمكن التراجع عن هذا الإجراء`)) return;
+
+  try {
+    const res = await api('/api/admin/delete', {
+      admin_password: adminPass,
+      key
+    });
+    if (res.ok) {
+      showToast('تم الحذف ✓', 'success');
+      await loadLicenses();
+    } else {
+      showToast(res.error || 'فشل الحذف', 'error');
+    }
+  } catch(e) {
+    showToast('خطأ في الاتصال', 'error');
+  }
+}
+
+// ── toast ─────────────────────────────────
+let toastTimer;
+function showToast(msg, type = '') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `toast ${type} show`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.classList.remove('show'); }, 3000);
+}
+
+// ── enter للدخول ──────────────────────────
+document.getElementById('passInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') login();
+});
+</script>
+</body>
+</html>

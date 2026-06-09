@@ -1,12 +1,17 @@
 {
-  "name": "pos-barcode-relay",
-  "version": "1.0.0",
+  "name": "pos-relay-license",
+  "version": "2.0.0",
+  "description": "POS Relay Server + Cloud License API",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "ws": "^8.16.0"
+    "ws": "^8.16.0",
+    "pg": "^8.11.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
