@@ -359,6 +359,30 @@ tr:hover td { background: #1a2540; }
 
 .btn-reset:hover { background: #1e4a7a; }
 
+.btn-revoke {
+  background: #3b1f1f;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 10px;
+  color: #f87171;
+  font-size: 11px;
+  cursor: pointer;
+}
+.btn-revoke:hover { background: #5c1d1d; }
+
+.btn-unrevoke {
+  background: #1a3a1f;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 10px;
+  color: #34d399;
+  font-size: 11px;
+  cursor: pointer;
+}
+.btn-unrevoke:hover { background: #1e5228; }
+
+tr.revoked-row td { opacity: 0.45; }
+
 .btn-delete {
   background: #3b1f1f;
   border: none;
@@ -464,7 +488,7 @@ tr:hover td { background: #1a2540; }
       </div>
       <div class="stat-card expired">
         <div class="stat-val" id="statExpired">—</div>
-        <div class="stat-label">منتهية</div>
+        <div class="stat-label">منتهية / مقطوعة</div>
       </div>
     </div>
 
@@ -611,7 +635,7 @@ function renderStats() {
   let active = 0, unused = 0, expired = 0;
   for (const l of allLicenses) {
     if (!l.activated_at) { unused++; }
-    else if (l.expires_at && l.expires_at < today) { expired++; }
+    else if (l.revoked || (l.expires_at && l.expires_at < today)) { expired++; }
     else { active++; }
   }
   document.getElementById('statTotal').textContent   = allLicenses.length;
@@ -643,7 +667,9 @@ function renderTable() {
     const typeClass = `badge badge-${l.type}`;
 
     let statusHtml;
-    if (!l.activated_at) {
+    if (l.revoked) {
+      statusHtml = '<span class="status-expired">⛔ مقطوع</span>';
+    } else if (!l.activated_at) {
       statusHtml = '<span class="status-unused">● غير مستخدم</span>';
     } else if (l.expires_at && l.expires_at < today) {
       statusHtml = '<span class="status-expired">● منتهي</span>';
@@ -659,7 +685,7 @@ function renderTable() {
     const activatedAt = l.activated_at ? l.activated_at.slice(0,10) : '—';
     const expiresAt   = l.expires_at   ? l.expires_at.slice(0,10)   : (l.type === 'lifetime' ? '♾️' : '—');
 
-    return `<tr>
+    return `<tr class="${l.revoked ? 'revoked-row' : ''}">
       <td class="key-cell">${l.key}</td>
       <td><span class="${typeClass}">${typeLabel}</span></td>
       <td>${statusHtml}</td>
@@ -670,7 +696,11 @@ function renderTable() {
       <td>
         <div class="action-wrap">
           <button class="btn-copy-key" onclick="copyKey('${l.key}')">نسخ</button>
-          ${l.activated_at ? `<button class="btn-reset" onclick="resetKey('${l.key}')">إعادة تعيين</button>` : ''}
+          ${l.activated_at && !l.revoked ? `<button class="btn-reset" onclick="resetKey('${l.key}')">إعادة تعيين</button>` : ''}
+          ${l.revoked
+            ? `<button class="btn-unrevoke" onclick="toggleRevoke('${l.key}', true)">✅ استعادة</button>`
+            : `<button class="btn-revoke"   onclick="toggleRevoke('${l.key}', false)">⛔ قطع</button>`
+          }
           <button class="btn-delete" onclick="deleteKey('${l.key}')">حذف</button>
         </div>
       </td>
@@ -755,6 +785,27 @@ async function resetKey(key) {
       await loadLicenses();
     } else {
       showToast(res.error || 'فشل إعادة التعيين', 'error');
+    }
+  } catch(e) {
+    showToast('خطأ في الاتصال', 'error');
+  }
+}
+
+// ── قطع / استعادة ترخيص ──────────────────
+async function toggleRevoke(key, isRevoked) {
+  const msg = isRevoked
+    ? `استعادة الترخيص:\n${key}؟`
+    : `قطع الترخيص:\n${key}؟\n\nسيُوقف البرنامج عند اتصال العميل بالإنترنت.`;
+  if (!confirm(msg)) return;
+
+  const endpoint = isRevoked ? '/api/admin/unrevoke' : '/api/admin/revoke';
+  try {
+    const res = await api(endpoint, { admin_password: adminPass, key });
+    if (res.ok) {
+      showToast(isRevoked ? '✅ تم استعادة الترخيص' : '⛔ تم قطع الترخيص', 'success');
+      await loadLicenses();
+    } else {
+      showToast(res.error || 'فشل العملية', 'error');
     }
   } catch(e) {
     showToast('خطأ في الاتصال', 'error');
