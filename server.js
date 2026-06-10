@@ -247,6 +247,45 @@ app.post('/api/license/verify', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/license/register-room
+ * يُستدعى من الـ POS عند بدء تشغيل الـ scanner لربط room_id بالمفتاح
+ * Body: { key, instance_id, room_id }
+ */
+app.post('/api/license/register-room', async (req, res) => {
+  const { key, instance_id, room_id } = req.body || {};
+  if (!key || !instance_id || !room_id) {
+    return res.status(400).json({ ok: false, error: 'key و instance_id و room_id مطلوبة' });
+  }
+
+  try {
+    // تحقق أن المفتاح صحيح وينتمي لهذا الجهاز
+    const result = await pool.query(
+      'SELECT key FROM licenses WHERE key = $1 AND instance_id = $2 AND revoked = 0',
+      [key.toUpperCase().trim(), instance_id]
+    );
+    if (result.rows.length === 0) {
+      return res.json({ ok: false, error: 'الترخيص غير صالح' });
+    }
+
+    const licKey = result.rows[0].key;
+
+    // نحدّث أو ننشئ سجل الـ snapshot بـ room_id
+    await pool.query(
+      `INSERT INTO client_snapshots (license_key, last_seen, is_online, room_id)
+       VALUES ($1, NOW(), FALSE, $2)
+       ON CONFLICT (license_key) DO UPDATE
+         SET room_id = $2, last_seen = NOW()`,
+      [licKey, room_id]
+    );
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[register-room]', err.message);
+    res.status(500).json({ ok: false, error: 'خطأ في السيرفر' });
+  }
+});
+
 // ═════════════════════════════════════════════
 //  ADMIN API  (محمية بـ ADMIN_SECRET)
 // ═════════════════════════════════════════════
@@ -536,12 +575,12 @@ wss.on('connection', (ws, req) => {
         timer,
         resolve: async (data) => {
           try {
+            // نبحث بـ room_id مباشرة في client_snapshots (تم ربطه مسبقاً عبر register-room)
             await pool.query(
-              `INSERT INTO client_snapshots (license_key, last_seen, is_online, room_id, snapshot)
-               SELECT key, NOW(), TRUE, $1, $2 FROM licenses WHERE instance_id = $1
-               ON CONFLICT (license_key) DO UPDATE
-                 SET last_seen = NOW(), is_online = TRUE, room_id = $1, snapshot = $2`,
-              [roomId, JSON.stringify(data)]
+              `UPDATE client_snapshots
+               SET snapshot = $1, last_seen = NOW(), is_online = TRUE
+               WHERE room_id = $2`,
+              [JSON.stringify(data), roomId]
             );
           } catch(e) { console.error('[snapshot] فشل حفظ البيانات:', e.message); }
         },
