@@ -963,16 +963,23 @@ function renderModalData(key, snap, isLive) {
     const fmt = v => v != null ? Number(v).toLocaleString('fr-DZ') : '—';
     const fmtDZD = v => v != null ? Number(v).toLocaleString('fr-DZ') + ' دج' : '—';
 
-    // نحاول نستخرج الأرقام من هياكل مختلفة
-    const sales      = data.today_sales      ?? data.todaySales      ?? data.sales_count      ?? '—';
-    const revenue    = data.today_revenue    ?? data.todayRevenue    ?? data.total_revenue    ?? data.revenue    ?? null;
-    const profit     = data.today_profit     ?? data.todayProfit     ?? data.profit           ?? null;
-    const debt       = data.total_debt       ?? data.totalDebt       ?? data.debts            ?? null;
-    const cash       = data.cash             ?? data.cash_balance    ?? null;
-    const products   = data.products_count   ?? data.productsCount   ?? data.total_products   ?? '—';
-    const customers  = data.customers_count  ?? data.customersCount  ?? data.total_customers  ?? '—';
-    const month_rev  = data.month_revenue    ?? data.monthRevenue    ?? null;
-    const month_prof = data.month_profit     ?? data.monthProfit     ?? null;
+    const sales      = data.today_sales_count ?? '—';
+    const revenue    = data.today_revenue    ?? null;
+    const profit     = data.today_profit     ?? null;
+    const debt       = (() => {
+      // نحسب الديون من customers array
+      if (Array.isArray(data.customers)) {
+        return data.customers.reduce((sum, c) => sum + (Number(c.debt) || 0), 0);
+      }
+      return null;
+    })();
+    const cash       = (() => {
+      try { return JSON.parse(data.cash_drawer ?? 'null'); } catch { return Number(data.cash_drawer) || null; }
+    })();
+    const products   = Array.isArray(data.products) ? data.products.length : '—';
+    const customers  = Array.isArray(data.customers) ? data.customers.length : '—';
+    const month_rev  = data.month_revenue ?? null;
+    const month_prof = data.month_profit  ?? null;
 
     statsHtml = `
       <div class="modal-section">
