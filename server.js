@@ -546,7 +546,7 @@ app.get('/scanner/:roomId',   (req, res) => sendFile(res, 'scanner.html'));
 app.get('/dashboard/:roomId', (req, res) => sendFile(res, 'dashboard.html'));
 app.get('/health', (_, res) => res.json({ ok: true, rooms: rooms.size, time: new Date() }));
 app.get('/admin',  (_, res) => sendFile(res, 'admin.html'));
-app.get('/',       (_, res) => res.send('POS Server ✅ — Relay + License API'));
+app.get('/',       (_, res) => sendFile(res, 'download.html'));
 
 // ═════════════════════════════════════════════
 //  Relay WebSocket (scanner ↔ POS)

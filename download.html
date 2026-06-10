@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>برنامج نقطة البيع — تنزيل</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0a0f1e;
+    --surface:   #111827;
+    --surface2:  #1a2235;
+    --border:    #1f2d45;
+    --gold:      #f59e0b;
+    --gold-dim:  #92610a;
+    --gold-glow: rgba(245,158,11,0.15);
+    --text:      #f1f5f9;
+    --muted:     #64748b;
+    --green:     #10b981;
+    --radius:    14px;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Cairo', sans-serif;
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+
+  /* ── HEADER ──────────────────────────────────── */
+  header {
+    position: fixed; top: 0; width: 100%; z-index: 100;
+    padding: 14px 40px;
+    display: flex; justify-content: space-between; align-items: center;
+    background: rgba(10,15,30,0.85);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .logo {
+    display: flex; align-items: center; gap: 10px;
+    font-weight: 900; font-size: 20px; letter-spacing: -0.5px;
+  }
+  .logo-icon {
+    width: 34px; height: 34px; background: var(--gold);
+    border-radius: 8px; display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+  .logo span { color: var(--gold); }
+  .header-btn {
+    padding: 9px 22px; border-radius: 8px;
+    background: var(--gold); color: #0a0f1e;
+    font-family: 'Cairo', sans-serif; font-weight: 700; font-size: 14px;
+    border: none; cursor: pointer; text-decoration: none;
+    transition: opacity .2s;
+  }
+  .header-btn:hover { opacity: .85; }
+
+  /* ── HERO ────────────────────────────────────── */
+  .hero {
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 120px 24px 80px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* grid background */
+  .hero::before {
+    content: '';
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(245,158,11,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(245,158,11,0.04) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 100%);
+  }
+
+  /* glow */
+  .hero::after {
+    content: '';
+    position: absolute; top: -10%; left: 50%; transform: translateX(-50%);
+    width: 600px; height: 400px;
+    background: radial-gradient(ellipse, rgba(245,158,11,0.12) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .hero-badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3);
+    color: var(--gold); padding: 6px 16px; border-radius: 30px;
+    font-size: 13px; font-weight: 600; margin-bottom: 28px;
+    position: relative; z-index: 1;
+  }
+  .badge-dot {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--gold);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity: 1; transform: scale(1); }
+    50%      { opacity: .4; transform: scale(1.3); }
+  }
+
+  .hero h1 {
+    font-size: clamp(38px, 7vw, 72px);
+    font-weight: 900; line-height: 1.1;
+    letter-spacing: -1px;
+    position: relative; z-index: 1;
+    margin-bottom: 20px;
+  }
+  .hero h1 .accent { color: var(--gold); }
+
+  .hero-sub {
+    font-size: clamp(16px, 2.5vw, 20px);
+    color: var(--muted); max-width: 560px;
+    position: relative; z-index: 1; margin-bottom: 50px;
+  }
+
+  /* ── LIVE COUNTER ────────────────────────────── */
+  .counter-bar {
+    display: flex; gap: 28px; flex-wrap: wrap; justify-content: center;
+    margin-bottom: 50px; position: relative; z-index: 1;
+  }
+  .counter-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px 32px; text-align: center;
+    min-width: 150px;
+    position: relative; overflow: hidden;
+  }
+  .counter-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  }
+  .counter-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 34px; font-weight: 700; color: var(--gold);
+    line-height: 1;
+  }
+  .counter-label { font-size: 12px; color: var(--muted); margin-top: 6px; font-weight: 600; }
+
+  /* ── DOWNLOAD BTN ────────────────────────────── */
+  .download-wrap { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+
+  .btn-download {
+    display: inline-flex; align-items: center; gap: 12px;
+    padding: 18px 40px; border-radius: 12px;
+    background: var(--gold); color: #0a0f1e;
+    font-family: 'Cairo', sans-serif; font-weight: 900; font-size: 18px;
+    text-decoration: none; border: none; cursor: pointer;
+    transition: transform .2s, box-shadow .2s;
+    box-shadow: 0 0 40px rgba(245,158,11,0.3);
+  }
+  .btn-download:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 0 60px rgba(245,158,11,0.5);
+  }
+  .btn-download .dl-icon { font-size: 22px; }
+
+  .dl-meta { font-size: 13px; color: var(--muted); }
+  .dl-meta span { color: var(--text); font-weight: 600; }
+
+  /* ── SCREENSHOT MOCKUP ───────────────────────── */
+  .mockup-wrap {
+    position: relative; z-index: 1;
+    margin-top: 70px; width: 100%; max-width: 900px;
+  }
+  .mockup-window {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px; overflow: hidden;
+    box-shadow: 0 40px 80px rgba(0,0,0,0.6), 0 0 60px rgba(245,158,11,0.08);
+  }
+  .mockup-bar {
+    background: #0d1526; padding: 12px 16px;
+    display: flex; align-items: center; gap: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .mock-dot { width: 12px; height: 12px; border-radius: 50%; }
+  .mock-dot.r { background: #ef4444; }
+  .mock-dot.y { background: #f59e0b; }
+  .mock-dot.g { background: #10b981; }
+  .mockup-title { font-size: 13px; color: var(--muted); margin-right: auto; font-family: 'JetBrains Mono', monospace; }
+  .mockup-content {
+    padding: 24px;
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;
+  }
+  .mock-card {
+    background: #0a0f1e; border-radius: 10px; padding: 16px;
+    border: 1px solid var(--border);
+  }
+  .mock-card-label { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+  .mock-card-val { font-size: 22px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+  .mock-card-val.g { color: var(--green); }
+  .mock-card-val.y { color: var(--gold); }
+  .mock-card-val.w { color: var(--text); }
+
+  .mock-table { grid-column: 1/-1; background: #0a0f1e; border-radius: 10px; padding: 16px; border: 1px solid var(--border); }
+  .mock-row { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .mock-row:last-child { border: none; }
+  .mock-row.head { color: var(--muted); font-size: 11px; font-weight: 700; }
+  .mock-bar-wrap { grid-column: 1/-1; background: #0a0f1e; border-radius: 10px; padding: 16px; border: 1px solid var(--border); }
+  .mock-bar-label { font-size: 11px; color: var(--muted); margin-bottom: 12px; }
+  .mock-bars { display: flex; align-items: flex-end; gap: 8px; height: 60px; }
+  .mock-b { flex: 1; background: var(--gold); border-radius: 4px 4px 0 0; opacity: .7; transition: height .3s; }
+
+  /* ── FEATURES ────────────────────────────────── */
+  .features {
+    padding: 100px 24px;
+    max-width: 1100px; margin: 0 auto;
+  }
+  .section-eyebrow {
+    font-size: 12px; font-weight: 700; letter-spacing: .12em;
+    color: var(--gold); text-transform: uppercase; margin-bottom: 12px;
+  }
+  .section-title { font-size: clamp(28px, 4vw, 42px); font-weight: 900; margin-bottom: 56px; }
+
+  .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+
+  .feat-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 28px;
+    transition: border-color .2s, transform .2s;
+    position: relative; overflow: hidden;
+  }
+  .feat-card:hover { border-color: var(--gold-dim); transform: translateY(-4px); }
+  .feat-icon { font-size: 32px; margin-bottom: 16px; }
+  .feat-title { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+  .feat-desc { font-size: 14px; color: var(--muted); line-height: 1.7; }
+
+  /* ── REQUIREMENTS ────────────────────────────── */
+  .requirements {
+    padding: 60px 24px;
+    max-width: 800px; margin: 0 auto;
+    background: var(--surface2);
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    margin-bottom: 80px;
+  }
+  .req-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 28px; }
+  .req-item { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+  .req-item::before { content: '✓'; color: var(--green); font-weight: 700; font-size: 16px; flex-shrink: 0; }
+
+  /* ── CTA ─────────────────────────────────────── */
+  .cta-section {
+    text-align: center; padding: 100px 24px;
+    position: relative; overflow: hidden;
+  }
+  .cta-section::before {
+    content: ''; position: absolute; inset: 0;
+    background: radial-gradient(ellipse 60% 80% at 50% 50%, rgba(245,158,11,0.06) 0%, transparent 70%);
+  }
+  .cta-section h2 { font-size: clamp(28px, 4vw, 44px); font-weight: 900; margin-bottom: 16px; position: relative; }
+  .cta-section p { font-size: 18px; color: var(--muted); margin-bottom: 40px; position: relative; }
+
+  /* ── FOOTER ──────────────────────────────────── */
+  footer {
+    text-align: center; padding: 32px 24px;
+    border-top: 1px solid var(--border);
+    font-size: 13px; color: var(--muted);
+  }
+
+  @media (max-width: 640px) {
+    header { padding: 12px 20px; }
+    .mockup-content { grid-template-columns: 1fr 1fr; }
+    .req-grid { grid-template-columns: 1fr; }
+    .counter-bar { gap: 16px; }
+    .counter-card { min-width: 130px; padding: 16px 20px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">🏪</div>
+    <span>POS</span> Pro
+  </div>
+  <a href="#download" class="header-btn">تنزيل مجاني</a>
+</header>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-badge">
+    <span class="badge-dot"></span>
+    الإصدار 0.1.0 — متاح الآن
+  </div>
+
+  <h1>برنامج <span class="accent">نقطة البيع</span><br>الأذكى لمحلك</h1>
+
+  <p class="hero-sub">
+    سيطر على مبيعاتك، تتبّع مخزونك، واستعرض تقاريرك — كل شيء في مكان واحد، يعمل بدون إنترنت.
+  </p>
+
+  <!-- Live counters -->
+  <div class="counter-bar">
+    <div class="counter-card">
+      <div class="counter-num" id="cnt-sales">0</div>
+      <div class="counter-label">فاتورة مُعالَجة</div>
+    </div>
+    <div class="counter-card">
+      <div class="counter-num" id="cnt-products">0</div>
+      <div class="counter-label">منتج مُدار</div>
+    </div>
+    <div class="counter-card">
+      <div class="counter-num" id="cnt-clients">0</div>
+      <div class="counter-label">عميل مسجّل</div>
+    </div>
+  </div>
+
+  <!-- Download -->
+  <div class="download-wrap" id="download">
+    <a href="https://github.com/aoalpha869-tech/pos-relay/releases/download/v0.1.0/pos-app_0.1.0_x64_en-US.msi"
+       class="btn-download">
+      <span class="dl-icon">⬇</span>
+      تنزيل البرنامج مجاناً
+    </a>
+    <div class="dl-meta">
+      <span>Windows 10/11</span> · 64-bit · الإصدار 0.1.0
+    </div>
+  </div>
+
+  <!-- Mockup -->
+  <div class="mockup-wrap">
+    <div class="mockup-window">
+      <div class="mockup-bar">
+        <div class="mock-dot r"></div>
+        <div class="mock-dot y"></div>
+        <div class="mock-dot g"></div>
+        <div class="mockup-title">لوحة التحكم</div>
+      </div>
+      <div class="mockup-content">
+        <div class="mock-card">
+          <div class="mock-card-label">مبيعات اليوم</div>
+          <div class="mock-card-val g" id="m-sales">0</div>
+        </div>
+        <div class="mock-card">
+          <div class="mock-card-label">إيرادات اليوم</div>
+          <div class="mock-card-val g" id="m-rev">0 دج</div>
+        </div>
+        <div class="mock-card">
+          <div class="mock-card-label">ربح الشهر</div>
+          <div class="mock-card-val y" id="m-profit">0 دج</div>
+        </div>
+        <div class="mock-card">
+          <div class="mock-card-label">المخزون</div>
+          <div class="mock-card-val w" id="m-stock">0 صنف</div>
+        </div>
+
+        <div class="mock-table">
+          <div class="mock-row head">
+            <div>المنتج</div><div>الكمية</div><div>السعر</div><div>الإجمالي</div>
+          </div>
+          <div class="mock-row">
+            <div>زيت زيتون 1L</div><div>3</div><div>850 دج</div><div>2 550 دج</div>
+          </div>
+          <div class="mock-row">
+            <div>دقيق قمح 5kg</div><div>2</div><div>420 دج</div><div>840 دج</div>
+          </div>
+          <div class="mock-row">
+            <div>حليب UHT</div><div>6</div><div>155 دج</div><div>930 دج</div>
+          </div>
+        </div>
+
+        <div class="mock-bar-wrap">
+          <div class="mock-bar-label">مبيعات الأسبوع</div>
+          <div class="mock-bars" id="mockBars"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="features">
+  <div class="section-eyebrow">المميزات</div>
+  <div class="section-title">كل ما تحتاجه لإدارة محلك</div>
+
+  <div class="features-grid">
+    <div class="feat-card">
+      <div class="feat-icon">🧾</div>
+      <div class="feat-title">فواتير سريعة</div>
+      <div class="feat-desc">أنشئ فواتير في ثوانٍ مع طباعة فورية على طابعة الحرارية. يدعم الباركود والمسح الضوئي عبر الهاتف.</div>
+    </div>
+    <div class="feat-card">
+      <div class="feat-icon">📦</div>
+      <div class="feat-title">إدارة المخزون</div>
+      <div class="feat-desc">تتبّع كميات المنتجات تلقائياً مع تنبيهات عند نفاد المخزون. دعم كامل للمنتجات بالباركود.</div>
+    </div>
+    <div class="feat-card">
+      <div class="feat-icon">💳</div>
+      <div class="feat-title">ديون الزبائن</div>
+      <div class="feat-desc">سجّل ديون الزبائن وتتبّع السداد. تقارير مفصّلة لكل زبون مع تاريخ كامل للمعاملات.</div>
+    </div>
+    <div class="feat-card">
+      <div class="feat-icon">📊</div>
+      <div class="feat-title">تقارير يومية وشهرية</div>
+      <div class="feat-desc">استعرض أرباحك اليومية والشهرية. لوحة متابعة حية تُظهر أداء محلك في الوقت الفعلي.</div>
+    </div>
+    <div class="feat-card">
+      <div class="feat-icon">📅</div>
+      <div class="feat-title">نظام التقسيط</div>
+      <div class="feat-desc">سجّل حجوزات الزبائن وعمليات التقسيط بسهولة مع تتبّع الأقساط المتبقية.</div>
+    </div>
+    <div class="feat-card">
+      <div class="feat-icon">🌐</div>
+      <div class="feat-title">مراقبة عن بُعد</div>
+      <div class="feat-desc">راقب مبيعاتك من هاتفك أينما كنت عبر لوحة المتابعة المباشرة. لا تفوّتك فاتورة.</div>
+    </div>
+    <div class="feat-card">
+      <div class="feat-icon">🔒</div>
+      <div class="feat-title">يعمل بدون إنترنت</div>
+      <div class="feat-desc">جميع البيانات محفوظة محلياً على جهازك. يعمل بشكل كامل حتى بدون اتصال بالإنترنت.</div>
+    </div>
+    <div class="feat-card">
+      <div class="feat-icon">↩️</div>
+      <div class="feat-title">نظام المرتجعات</div>
+      <div class="feat-desc">معالجة مرتجعات البضاعة بدقة دون المساس بالفواتير الأصلية مع تحديث تلقائي للمخزون.</div>
+    </div>
+  </div>
+</section>
+
+<!-- REQUIREMENTS -->
+<div style="padding: 0 24px; max-width: 1100px; margin: 0 auto;">
+  <div class="requirements">
+    <div class="section-eyebrow" style="text-align:center">متطلبات التشغيل</div>
+    <div class="req-grid">
+      <div class="req-item">Windows 10 أو 11 (64-bit)</div>
+      <div class="req-item">معالج Intel / AMD</div>
+      <div class="req-item">ذاكرة RAM 4GB أو أكثر</div>
+      <div class="req-item">مساحة تخزين 500MB</div>
+      <div class="req-item">دقة شاشة 1366×768 أو أعلى</div>
+      <div class="req-item">اتصال إنترنت للمزامنة (اختياري)</div>
+    </div>
+  </div>
+</div>
+
+<!-- CTA -->
+<section class="cta-section">
+  <h2>ابدأ الآن — مجاناً</h2>
+  <p>نزّل البرنامج وشغّله في دقيقتين</p>
+  <a href="https://github.com/aoalpha869-tech/pos-relay/releases/download/v0.1.0/pos-app_0.1.0_x64_en-US.msi"
+     class="btn-download">
+    <span class="dl-icon">⬇</span>
+    تنزيل البرنامج — v0.1.0
+  </a>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  © 2026 برنامج نقطة البيع — جميع الحقوق محفوظة
+</footer>
+
+<script>
+  // ── Animated counters ──────────────────────────────────────────────────────
+  function animateCount(el, target, duration, suffix) {
+    const start = performance.now();
+    function step(now) {
+      const progress = Math.min((now - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      el.textContent = Math.floor(eased * target).toLocaleString('ar-DZ') + (suffix || '');
+      if (progress < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  // Trigger when hero is visible
+  const observer = new IntersectionObserver(entries => {
+    if (entries[0].isIntersecting) {
+      animateCount(document.getElementById('cnt-sales'),    12840, 2000);
+      animateCount(document.getElementById('cnt-products'),  4200, 2200);
+      animateCount(document.getElementById('cnt-clients'),   1850, 2400);
+      observer.disconnect();
+    }
+  });
+  observer.observe(document.querySelector('.counter-bar'));
+
+  // ── Mockup animated numbers ───────────────────────────────────────────────
+  const mockObs = new IntersectionObserver(entries => {
+    if (entries[0].isIntersecting) {
+      animateCount(document.getElementById('m-sales'),  23, 1200);
+      animateCount(document.getElementById('m-rev'),    0, 1400, ' دج');
+      animateCount(document.getElementById('m-profit'), 0, 1600, ' دج');
+      animateCount(document.getElementById('m-stock'), 312, 1200, ' صنف');
+
+      // set real values after anim
+      setTimeout(() => {
+        document.getElementById('m-rev').textContent    = '47 500 دج';
+        document.getElementById('m-profit').textContent = '8 200 دج';
+      }, 1500);
+
+      // bars
+      const heights = [30, 55, 40, 70, 50, 85, 60];
+      const container = document.getElementById('mockBars');
+      container.innerHTML = '';
+      heights.forEach((h, i) => {
+        const b = document.createElement('div');
+        b.className = 'mock-b';
+        b.style.height = '0px';
+        container.appendChild(b);
+        setTimeout(() => { b.style.height = h + 'px'; }, i * 80);
+      });
+
+      mockObs.disconnect();
+    }
+  });
+  mockObs.observe(document.querySelector('.mockup-wrap'));
+</script>
+</body>
+</html>
