@@ -417,6 +417,45 @@ app.post('/api/admin/reset-instance', requireAdmin, async (req, res) => {
 });
 
 /**
+ * POST /api/admin/link-room
+ * ربط room_id بمفتاح عميل يدوياً من صفحة الأدمن
+ * Body: { key, room_id }  — محمي بـ x-admin-password header
+ */
+app.post('/api/admin/link-room', requireAdmin, async (req, res) => {
+  const { key, room_id } = req.body || {};
+  if (!key || !room_id) return res.status(400).json({ error: 'key و room_id مطلوبان' });
+
+  try {
+    // نتحقق أن المفتاح موجود
+    const lic = await pool.query('SELECT key FROM licenses WHERE key = $1', [key.toUpperCase().trim()]);
+    if (lic.rows.length === 0) return res.json({ ok: false, error: 'المفتاح غير موجود' });
+
+    // نحدّث أو ننشئ سجل snapshot بـ room_id
+    await pool.query(
+      `INSERT INTO client_snapshots (license_key, last_seen, is_online, room_id)
+       VALUES ($1, NOW(), FALSE, $2)
+       ON CONFLICT (license_key) DO UPDATE
+         SET room_id = $2, last_seen = NOW()`,
+      [lic.rows[0].key, room_id.trim()]
+    );
+
+    // نحدّث is_online إذا الـ room متصل فعلاً
+    const room = rooms.get(room_id.trim());
+    if (room?.pos?.readyState === 1) {
+      await pool.query(
+        'UPDATE client_snapshots SET is_online = TRUE WHERE license_key = $1',
+        [lic.rows[0].key]
+      );
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[link-room]', err.message);
+    res.status(500).json({ error: 'فشل الربط' });
+  }
+});
+
+/**
  * POST /api/admin/client-snapshot
  * جلب آخر snapshot محفوظ لعميل معين
  * Body: { admin_password, key }
