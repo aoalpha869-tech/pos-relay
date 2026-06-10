@@ -32,7 +32,7 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }   // مطلوب على Render
 });
 
-// إنشاء الجدول إن لم يكن موجوداً
+// إنشاء الجداول إن لم تكن موجودة
 async function initDB() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS licenses (
@@ -47,12 +47,24 @@ async function initDB() {
       revoked      INTEGER NOT NULL DEFAULT 0
     )
   `);
-  console.log('[DB] جداول قاعدة البيانات جاهزة');
 
   // migration: أضف عمود revoked إذا لم يكن موجوداً
   await pool.query(`
     ALTER TABLE licenses ADD COLUMN IF NOT EXISTS revoked INTEGER NOT NULL DEFAULT 0
-  `).catch(() => {}); // تجاهل الخطأ لو العمود موجود مسبقاً
+  `).catch(() => {});
+
+  // جدول snapshots: آخر بيانات كل عميل
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS client_snapshots (
+      license_key   TEXT PRIMARY KEY REFERENCES licenses(key) ON DELETE CASCADE,
+      last_seen     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      is_online     BOOLEAN NOT NULL DEFAULT FALSE,
+      room_id       TEXT DEFAULT NULL,
+      snapshot      JSONB DEFAULT NULL
+    )
+  `);
+
+  console.log('[DB] جداول قاعدة البيانات جاهزة');
 }
 initDB().catch(err => console.error('[DB] فشل إنشاء الجداول:', err.message));
 
@@ -148,6 +160,13 @@ app.post('/api/license/activate', async (req, res) => {
          WHERE key = $4`,
         [today(), expires_at, instance_id, lic.key]
       );
+      // إنشاء سجل snapshot للعميل الجديد
+      await pool.query(
+        `INSERT INTO client_snapshots (license_key, last_seen, is_online, room_id)
+         VALUES ($1, NOW(), FALSE, $2)
+         ON CONFLICT (license_key) DO NOTHING`,
+        [lic.key, instance_id]
+      ).catch(() => {});
     }
 
     // تحقق من الانتهاء
@@ -358,6 +377,73 @@ app.post('/api/admin/reset-instance', requireAdmin, async (req, res) => {
   }
 });
 
+/**
+ * POST /api/admin/client-snapshot
+ * جلب آخر snapshot محفوظ لعميل معين
+ * Body: { admin_password, key }
+ */
+app.post('/api/admin/client-snapshot', requireAdmin, async (req, res) => {
+  const { key } = req.body;
+  if (!key) return res.status(400).json({ error: 'key مطلوب' });
+
+  try {
+    const result = await pool.query(
+      'SELECT * FROM client_snapshots WHERE license_key = $1',
+      [key.toUpperCase().trim()]
+    );
+    res.json({ ok: true, snapshot: result.rows[0] || null });
+  } catch (err) {
+    res.status(500).json({ error: 'فشل جلب البيانات' });
+  }
+});
+
+/**
+ * GET /api/admin/client-live/:key
+ * جلب بيانات مباشرة من الجهاز إذا كان متصلاً
+ */
+app.get('/api/admin/client-live/:key', async (req, res) => {
+  const pass = req.headers['x-admin-password'];
+  if (!checkAdmin(pass)) return res.status(401).json({ error: 'غير مصرح' });
+
+  const key = req.params.key.toUpperCase().trim();
+
+  // نبحث عن roomId الخاص بهذا المفتاح
+  const snap = await pool.query(
+    'SELECT room_id, is_online FROM client_snapshots WHERE license_key = $1',
+    [key]
+  ).catch(() => ({ rows: [] }));
+
+  const row = snap.rows[0];
+  if (!row || !row.room_id || !row.is_online) {
+    return res.status(503).json({ error: 'الجهاز غير متصل حالياً', offline: true });
+  }
+
+  const room = getRoom(row.room_id);
+  if (!room.pos || room.pos.readyState !== 1) {
+    // تحديث حالة الاتصال
+    await pool.query(
+      'UPDATE client_snapshots SET is_online = FALSE WHERE license_key = $1', [key]
+    ).catch(() => {});
+    return res.status(503).json({ error: 'الجهاز غير متصل حالياً', offline: true });
+  }
+
+  const reqId = Math.random().toString(36).slice(2);
+  try {
+    const data = await posRequest(room, 'dashboard_full_request', reqId, 14000);
+    // نحفظ snapshot تلقائياً
+    await pool.query(
+      `INSERT INTO client_snapshots (license_key, last_seen, is_online, room_id, snapshot)
+       VALUES ($1, NOW(), TRUE, $2, $3)
+       ON CONFLICT (license_key) DO UPDATE
+         SET last_seen = NOW(), is_online = TRUE, room_id = $2, snapshot = $3`,
+      [key, row.room_id, JSON.stringify(data)]
+    ).catch(() => {});
+    res.json({ ok: true, live: true, data });
+  } catch (e) {
+    res.status(504).json({ error: 'انتهى وقت الانتظار' });
+  }
+});
+
 // ═════════════════════════════════════════════
 //  Static Pages (scanner + dashboard)
 // ═════════════════════════════════════════════
@@ -434,6 +520,36 @@ wss.on('connection', (ws, req) => {
     console.log(`[POS] connected room=${roomId}`);
     ws.send(JSON.stringify({ type: 'status', msg: 'connected' }));
 
+    // تحديث حالة الاتصال في قاعدة البيانات
+    pool.query(
+      `UPDATE client_snapshots SET is_online = TRUE, last_seen = NOW()
+       WHERE room_id = $1`,
+      [roomId]
+    ).catch(() => {});
+
+    // جلب snapshot تلقائي بعد 3 ثواني من الاتصال
+    const autoReqId = 'auto_' + Math.random().toString(36).slice(2);
+    setTimeout(() => {
+      if (ws.readyState !== 1) return;
+      const timer = setTimeout(() => room.pendingReqs.delete(autoReqId), 15000);
+      room.pendingReqs.set(autoReqId, {
+        timer,
+        resolve: async (data) => {
+          try {
+            await pool.query(
+              `INSERT INTO client_snapshots (license_key, last_seen, is_online, room_id, snapshot)
+               SELECT key, NOW(), TRUE, $1, $2 FROM licenses WHERE instance_id = $1
+               ON CONFLICT (license_key) DO UPDATE
+                 SET last_seen = NOW(), is_online = TRUE, room_id = $1, snapshot = $2`,
+              [roomId, JSON.stringify(data)]
+            );
+          } catch(e) { console.error('[snapshot] فشل حفظ البيانات:', e.message); }
+        },
+        reject: () => {}
+      });
+      ws.send(JSON.stringify({ type: 'dashboard_full_request', reqId: autoReqId }));
+    }, 3000);
+
     ws.on('message', raw => {
       const txt = raw.toString().trim();
       try {
@@ -453,6 +569,12 @@ wss.on('connection', (ws, req) => {
 
     ws.on('close', () => {
       room.pos = null;
+      // تحديث حالة الاتصال عند الانقطاع
+      pool.query(
+        `UPDATE client_snapshots SET is_online = FALSE, last_seen = NOW()
+         WHERE room_id = $1`,
+        [roomId]
+      ).catch(() => {});
       for (const [, pending] of room.pendingReqs) {
         clearTimeout(pending.timer);
         pending.reject(new Error('POS انقطع'));

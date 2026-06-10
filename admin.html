@@ -442,6 +442,63 @@ tr.revoked-row td { opacity: 0.45; }
   th:nth-child(5), td:nth-child(5),
   th:nth-child(6), td:nth-child(6) { display: none; }
 }
+.btn-view {
+  padding: 5px 10px; border-radius: 6px; border: none; cursor: pointer; font-size: 12px; font-weight: 600;
+  background: #1e3a5f; color: #93c5fd; transition: background .2s;
+}
+.btn-view:hover { background: #1e4a7a; }
+
+/* ── Client Modal ─────────────────────────── */
+.modal-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7);
+  z-index: 1000; align-items: center; justify-content: center; padding: 16px;
+}
+.modal-overlay.open { display: flex; }
+.modal-box {
+  background: #1e293b; border-radius: 16px; width: 100%; max-width: 700px;
+  max-height: 90vh; overflow-y: auto; padding: 28px; position: relative;
+  border: 1px solid #334155;
+}
+.modal-close {
+  position: absolute; top: 16px; left: 16px; background: none; border: none;
+  color: #94a3b8; font-size: 22px; cursor: pointer; line-height: 1;
+}
+.modal-close:hover { color: #f1f5f9; }
+.modal-title { font-size: 18px; font-weight: 700; color: #f1f5f9; margin-bottom: 4px; }
+.modal-key   { font-size: 12px; color: #64748b; margin-bottom: 20px; font-family: monospace; }
+.modal-section { margin-bottom: 20px; }
+.modal-section-title {
+  font-size: 13px; font-weight: 700; color: #60a5fa; text-transform: uppercase;
+  letter-spacing: .05em; margin-bottom: 10px; padding-bottom: 6px;
+  border-bottom: 1px solid #334155;
+}
+.info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.info-card {
+  background: #0f172a; border-radius: 10px; padding: 12px 16px;
+  border: 1px solid #1e293b;
+}
+.info-card-label { font-size: 11px; color: #64748b; margin-bottom: 4px; }
+.info-card-value { font-size: 16px; font-weight: 700; color: #f1f5f9; }
+.info-card-value.green  { color: #4ade80; }
+.info-card-value.red    { color: #f87171; }
+.info-card-value.yellow { color: #fbbf24; }
+.online-badge  { display:inline-block; padding:3px 10px; border-radius:20px; font-size:12px; font-weight:700; background:#064e3b; color:#4ade80; }
+.offline-badge { display:inline-block; padding:3px 10px; border-radius:20px; font-size:12px; font-weight:700; background:#3b0f0f; color:#f87171; }
+.modal-actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:6px; }
+.btn-modal-live {
+  padding: 8px 18px; border-radius: 8px; border: none; cursor: pointer;
+  font-size: 13px; font-weight: 700; background: #1d4ed8; color: #fff; transition: background .2s;
+}
+.btn-modal-live:hover { background: #2563eb; }
+.btn-modal-live:disabled { background: #334155; color: #64748b; cursor: not-allowed; }
+.btn-modal-dash {
+  padding: 8px 18px; border-radius: 8px; border: none; cursor: pointer;
+  font-size: 13px; font-weight: 700; background: #065f46; color: #6ee7b7; transition: background .2s;
+}
+.btn-modal-dash:hover { background: #047857; }
+.modal-loading { text-align:center; color:#64748b; padding: 30px 0; font-size: 14px; }
+.modal-error   { text-align:center; color:#f87171; padding: 20px 0; font-size: 14px; }
+.snap-time { font-size:11px; color:#475569; margin-top:14px; text-align:center; }
 </style>
 </head>
 <body>
@@ -558,6 +615,16 @@ tr.revoked-row td { opacity: 0.45; }
       </div>
     </div>
 
+  </div>
+</div>
+
+<!-- ── Client Info Modal ───────────────────── -->
+<div class="modal-overlay" id="clientModal">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <div class="modal-title" id="modalTitle">بيانات العميل</div>
+    <div class="modal-key"  id="modalKey"></div>
+    <div id="modalBody"><div class="modal-loading">⏳ جاري التحميل...</div></div>
   </div>
 </div>
 
@@ -695,6 +762,7 @@ function renderTable() {
       <td style="color:#94a3b8;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${note}">${note}</td>
       <td>
         <div class="action-wrap">
+          <button class="btn-view" onclick="viewClient('${l.key}', '${l.note||''}')">👁 عرض</button>
           <button class="btn-copy-key" onclick="copyKey('${l.key}')">نسخ</button>
           ${l.activated_at && !l.revoked ? `<button class="btn-reset" onclick="resetKey('${l.key}')">إعادة تعيين</button>` : ''}
           ${l.revoked
@@ -846,6 +914,154 @@ function showToast(msg, type = '') {
 document.getElementById('passInput').addEventListener('keydown', e => {
   if (e.key === 'Enter') login();
 });
+
+// ══════════════════════════════════════════
+//  Client Info Modal
+// ══════════════════════════════════════════
+let currentModalKey = '';
+
+function closeModal() {
+  document.getElementById('clientModal').classList.remove('open');
+  currentModalKey = '';
+}
+document.getElementById('clientModal').addEventListener('click', e => {
+  if (e.target === document.getElementById('clientModal')) closeModal();
+});
+
+async function viewClient(key, note) {
+  currentModalKey = key;
+  document.getElementById('modalTitle').textContent = note || 'عميل';
+  document.getElementById('modalKey').textContent = key;
+  document.getElementById('modalBody').innerHTML = '<div class="modal-loading">⏳ جاري جلب البيانات...</div>';
+  document.getElementById('clientModal').classList.add('open');
+
+  try {
+    const res = await api('/api/admin/client-snapshot', { admin_password: adminPass, key });
+    renderModalData(key, res.snapshot, false);
+  } catch(e) {
+    document.getElementById('modalBody').innerHTML = '<div class="modal-error">⚠️ فشل جلب البيانات</div>';
+  }
+}
+
+function renderModalData(key, snap, isLive) {
+  const isOnline = snap?.is_online;
+  const lastSeen = snap?.last_seen
+    ? new Date(snap.last_seen).toLocaleString('ar-DZ')
+    : '—';
+  const data = snap?.snapshot || null;
+
+  const statusBadge = isOnline
+    ? '<span class="online-badge">🟢 متصل الآن</span>'
+    : '<span class="offline-badge">🔴 غير متصل</span>';
+
+  const dashLink = snap?.room_id
+    ? `<a href="/dashboard/${snap.room_id}" target="_blank" style="color:#60a5fa;font-size:13px;text-decoration:none">🔗 فتح Dashboard</a>`
+    : '';
+
+  let statsHtml = '';
+  if (data) {
+    const fmt = v => v != null ? Number(v).toLocaleString('fr-DZ') : '—';
+    const fmtDZD = v => v != null ? Number(v).toLocaleString('fr-DZ') + ' دج' : '—';
+
+    // نحاول نستخرج الأرقام من هياكل مختلفة
+    const sales      = data.today_sales      ?? data.todaySales      ?? data.sales_count      ?? '—';
+    const revenue    = data.today_revenue    ?? data.todayRevenue    ?? data.total_revenue    ?? data.revenue    ?? null;
+    const profit     = data.today_profit     ?? data.todayProfit     ?? data.profit           ?? null;
+    const debt       = data.total_debt       ?? data.totalDebt       ?? data.debts            ?? null;
+    const cash       = data.cash             ?? data.cash_balance    ?? null;
+    const products   = data.products_count   ?? data.productsCount   ?? data.total_products   ?? '—';
+    const customers  = data.customers_count  ?? data.customersCount  ?? data.total_customers  ?? '—';
+    const month_rev  = data.month_revenue    ?? data.monthRevenue    ?? null;
+    const month_prof = data.month_profit     ?? data.monthProfit     ?? null;
+
+    statsHtml = `
+      <div class="modal-section">
+        <div class="modal-section-title">📊 إحصائيات اليوم</div>
+        <div class="info-grid">
+          <div class="info-card"><div class="info-card-label">مبيعات اليوم</div><div class="info-card-value">${fmt(sales)}</div></div>
+          <div class="info-card"><div class="info-card-label">إيرادات اليوم</div><div class="info-card-value green">${fmtDZD(revenue)}</div></div>
+          <div class="info-card"><div class="info-card-label">أرباح اليوم</div><div class="info-card-value green">${fmtDZD(profit)}</div></div>
+          <div class="info-card"><div class="info-card-label">الصندوق</div><div class="info-card-value yellow">${fmtDZD(cash)}</div></div>
+        </div>
+      </div>
+      <div class="modal-section">
+        <div class="modal-section-title">📅 هذا الشهر</div>
+        <div class="info-grid">
+          <div class="info-card"><div class="info-card-label">إيرادات الشهر</div><div class="info-card-value green">${fmtDZD(month_rev)}</div></div>
+          <div class="info-card"><div class="info-card-label">أرباح الشهر</div><div class="info-card-value green">${fmtDZD(month_prof)}</div></div>
+          <div class="info-card"><div class="info-card-label">إجمالي الديون</div><div class="info-card-value red">${fmtDZD(debt)}</div></div>
+          <div class="info-card"><div class="info-card-label">عدد المنتجات</div><div class="info-card-value">${fmt(products)}</div></div>
+        </div>
+      </div>
+      <div class="modal-section">
+        <div class="modal-section-title">👥 الزبائن</div>
+        <div class="info-grid">
+          <div class="info-card"><div class="info-card-label">عدد الزبائن</div><div class="info-card-value">${fmt(customers)}</div></div>
+        </div>
+      </div>
+    `;
+  } else {
+    statsHtml = `<div class="modal-section"><div class="modal-error" style="background:#1e293b;border-radius:10px;padding:20px">
+      📭 لا توجد بيانات محفوظة بعد — يجب أن يتصل الجهاز مرة واحدة على الأقل
+    </div></div>`;
+  }
+
+  document.getElementById('modalBody').innerHTML = `
+    <div class="modal-section">
+      <div class="modal-section-title">🔌 حالة الجهاز</div>
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        ${statusBadge}
+        <span style="color:#64748b;font-size:13px">آخر اتصال: ${lastSeen}</span>
+        ${dashLink}
+      </div>
+    </div>
+    ${statsHtml}
+    <div class="modal-actions">
+      <button class="btn-modal-live" id="btnLive" onclick="fetchLiveData('${key}')">
+        ⚡ جلب بيانات مباشرة
+      </button>
+      ${snap?.room_id ? `<button class="btn-modal-dash" onclick="window.open('/dashboard/${snap.room_id}','_blank')">📊 فتح Dashboard</button>` : ''}
+    </div>
+    <div class="snap-time">${isLive ? '✅ بيانات مباشرة' : (data ? '💾 بيانات محفوظة — ' + lastSeen : '')}</div>
+  `;
+}
+
+async function fetchLiveData(key) {
+  const btn = document.getElementById('btnLive');
+  if (!btn) return;
+  btn.disabled = true;
+  btn.textContent = '⏳ جاري الاتصال...';
+
+  try {
+    const res = await fetch(`${API}/api/admin/client-live/${key}`, {
+      headers: { 'x-admin-password': adminPass }
+    });
+    const json = await res.json();
+    if (json.ok && json.data) {
+      // نبني snapshot مؤقت للعرض
+      const snap = {
+        is_online: true,
+        last_seen: new Date().toISOString(),
+        snapshot: json.data,
+        room_id: null
+      };
+      // نحتفظ بـ room_id من البيانات القديمة
+      const oldSnap = await api('/api/admin/client-snapshot', { admin_password: adminPass, key }).catch(() => ({}));
+      if (oldSnap?.snapshot?.room_id) snap.room_id = oldSnap.snapshot.room_id;
+      renderModalData(key, snap, true);
+      showToast('✅ تم جلب البيانات مباشرة', 'success');
+    } else if (json.offline) {
+      showToast('🔴 الجهاز غير متصل حالياً', 'error');
+      if (btn) { btn.disabled = false; btn.textContent = '⚡ جلب بيانات مباشرة'; }
+    } else {
+      showToast(json.error || 'فشل الجلب', 'error');
+      if (btn) { btn.disabled = false; btn.textContent = '⚡ جلب بيانات مباشرة'; }
+    }
+  } catch(e) {
+    showToast('خطأ في الاتصال', 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '⚡ جلب بيانات مباشرة'; }
+  }
+}
 </script>
 </body>
 </html>
