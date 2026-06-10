@@ -1029,47 +1029,13 @@ function renderModalData(key, snap, isLive) {
       </button>
       ${snap?.room_id ? `<button class="btn-modal-dash" onclick="window.open('/dashboard/${snap.room_id}','_blank')">📊 فتح Dashboard</button>` : ''}
     </div>
-    <div style="margin-top:14px;padding:12px;background:#0f172a;border-radius:10px;border:1px solid #1e293b">
-      <div style="font-size:11px;color:#64748b;margin-bottom:8px">🔗 ربط Room ID يدوياً (من رابط لوحة المتابعة)</div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <input id="roomIdInput" type="text" placeholder="مثال: aipox9wg"
-          value="${snap?.room_id || ''}"
-          style="flex:1;padding:7px 10px;border-radius:7px;border:1px solid #334155;background:#1e293b;color:#f1f5f9;font-size:13px;font-family:monospace;direction:ltr">
-        <button onclick="linkRoomId('${key}')"
-          style="padding:7px 14px;border-radius:7px;border:none;background:#7c3aed;color:#fff;font-size:13px;font-weight:700;cursor:pointer">
-          ربط ✓
-        </button>
-      </div>
-    </div>
+
     </div>
     <div class="snap-time">${isLive ? '✅ بيانات مباشرة' : (data ? '💾 بيانات محفوظة — ' + lastSeen : '')}</div>
   `;
 }
 
-// ── ربط room_id يدوياً ────────────────────────────────────────────────────
-async function linkRoomId(key) {
-  const input = document.getElementById('roomIdInput');
-  const room_id = input?.value?.trim();
-  if (!room_id) { showToast('أدخل Room ID أولاً', 'error'); return; }
 
-  try {
-    const res = await fetch(`${API}/api/admin/link-room`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-admin-password': adminPass },
-      body: JSON.stringify({ key, room_id })
-    });
-    const json = await res.json();
-    if (json.ok) {
-      showToast('✅ تم الربط — جاري جلب البيانات...', 'success');
-      // نجلب البيانات مباشرة بعد الربط
-      setTimeout(() => fetchLiveData(key), 500);
-    } else {
-      showToast(json.error || 'فشل الربط', 'error');
-    }
-  } catch(e) {
-    showToast('خطأ في الاتصال', 'error');
-  }
-}
 
 async function fetchLiveData(key) {
   const btn = document.getElementById('btnLive');
