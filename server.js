@@ -201,7 +201,7 @@ app.post('/api/license/activate', async (req, res) => {
  * Body: { key, instance_id }
  */
 app.post('/api/license/verify', async (req, res) => {
-  const { key, instance_id } = req.body || {};
+  const { key, instance_id, room_id } = req.body || {};
 
   if (!key || !instance_id) {
     return res.status(400).json({ ok: false, error: 'key و instance_id مطلوبان' });
@@ -232,6 +232,17 @@ app.post('/api/license/verify', async (req, res) => {
     if (lic.expires_at) {
       const diff = new Date(lic.expires_at) - new Date(today());
       days_left = Math.max(0, Math.ceil(diff / 86400000));
+    }
+
+    // ── حفظ room_id إذا أُرسل ─────────────────────────────────────────
+    if (room_id && room_id.trim()) {
+      pool.query(
+        `INSERT INTO client_snapshots (license_key, last_seen, is_online, room_id)
+         VALUES ($1, NOW(), FALSE, $2)
+         ON CONFLICT (license_key) DO UPDATE
+           SET room_id = $2, last_seen = NOW()`,
+        [lic.key, room_id.trim()]
+      ).catch(() => {});
     }
 
     res.json({
