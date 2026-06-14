@@ -611,6 +611,10 @@ wss.on('connection', (ws, req) => {
 
   if (!role || !roomId) { ws.close(4000, 'missing role or room'); return; }
 
+  // ── Heartbeat: نعلّم الاتصال أنه حي عند كل pong ──────────────────────────
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
+
   const room = getRoom(roomId);
 
   if (role === 'pos') {
@@ -652,6 +656,13 @@ wss.on('connection', (ws, req) => {
       const txt = raw.toString().trim();
       try {
         const msg = JSON.parse(txt);
+
+        // ── رد على ping التطبيقي القادم من POS (heartbeat) ─────────────────
+        if (msg.type === 'ping') {
+          ws.send(JSON.stringify({ type: 'pong' }));
+          return;
+        }
+
         if ((msg.type === 'dashboard_response' || msg.type === 'dashboard_full_response') && msg.reqId) {
           const pending = room.pendingReqs.get(msg.reqId);
           if (pending) {
@@ -704,3 +715,21 @@ wss.on('connection', (ws, req) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`[Server] port=${PORT} — Relay + License API ✅`));
+
+// ─────────────────────────────────────────────
+//  Heartbeat: فحص الاتصالات الخاملة كل 30 ثانية
+//  يحل مشكلة "half-open connections" التي تجعل
+//  السيرفر يعتقد أن POS متصل بينما الاتصال ميت فعلاً
+// ─────────────────────────────────────────────
+const HEARTBEAT_INTERVAL = 30000; // 30 ثانية
+
+setInterval(() => {
+  wss.clients.forEach(ws => {
+    if (ws.isAlive === false) {
+      // لم يردّ على آخر ping → الاتصال ميت، نغلقه فعلياً
+      return ws.terminate();
+    }
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, HEARTBEAT_INTERVAL);
