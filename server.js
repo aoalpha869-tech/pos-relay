@@ -701,6 +701,16 @@ wss.on('connection', (ws, req) => {
     ws.on('message', raw => {
       const txt = raw.toString().trim();
       if (!txt) return;
+
+      // ── رد على ping التطبيقي القادم من صفحة السكانر (heartbeat) ─────────
+      try {
+        const msg = JSON.parse(txt);
+        if (msg.type === 'ping') {
+          ws.send(JSON.stringify({ type: 'pong' }));
+          return;
+        }
+      } catch (e) { /* ليست JSON — باركود عادي */ }
+
       if (room.pos?.readyState === 1)
         room.pos.send(JSON.stringify({ type: 'barcode', value: txt }));
     });

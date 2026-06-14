@@ -263,15 +263,42 @@ body {
   document.getElementById('dashLink').href = '/dashboard/' + roomId;
 
   // ── WebSocket ──
-  let ws, wsRetry;
+  let ws, wsRetry, hbInterval, hbTimeout;
+  const HB_INTERVAL = 25000; // كل 25 ثانية
+  const HB_TIMEOUT  = 10000; // إن لم يرد السيرفر خلال 10 ثوانٍ → الاتصال ميت
+
   function connectWS() {
     clearTimeout(wsRetry);
     ws = new WebSocket(WS_URL);
-    ws.onopen  = () => setConn('connected', '✅ متصل بالـ POS');
-    ws.onclose = () => { setConn('error', '❌ انقطع — إعادة المحاولة...'); wsRetry = setTimeout(connectWS, 3000); };
+    ws.onopen  = () => { setConn('connected', '✅ متصل بالـ POS'); startHeartbeat(); };
+    ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'pong') { clearTimeout(hbTimeout); return; }
+      } catch (_) { /* ليست JSON — رسالة عادية من السيرفر */ }
+    };
+    ws.onclose = () => { setConn('error', '❌ انقطع — إعادة المحاولة...'); stopHeartbeat(); wsRetry = setTimeout(connectWS, 3000); };
     ws.onerror = () => ws.close();
   }
   connectWS();
+
+  // ── Heartbeat: يكتشف الاتصالات "نصف المفتوحة" ──
+  function startHeartbeat() {
+    stopHeartbeat();
+    hbInterval = setInterval(() => {
+      if (!ws || ws.readyState !== 1) return;
+      try { ws.send(JSON.stringify({ type: 'ping' })); } catch (_) {}
+      clearTimeout(hbTimeout);
+      hbTimeout = setTimeout(() => {
+        // لم يصلنا pong — الاتصال ميت فعلياً، نعيد الاتصال
+        if (ws) { try { ws.close(); } catch (_) {} }
+      }, HB_TIMEOUT);
+    }, HB_INTERVAL);
+  }
+  function stopHeartbeat() {
+    clearInterval(hbInterval); hbInterval = null;
+    clearTimeout(hbTimeout); hbTimeout = null;
+  }
 
   function setConn(s, t) {
     const el = document.getElementById('connCard');
