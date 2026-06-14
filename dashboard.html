@@ -449,8 +449,11 @@ body {
   function esc(s) {
     return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
-  function today() { return new Date().toISOString().slice(0,10); }
-  function thisMonth() { return new Date().toISOString().slice(0,7); }
+  function today() {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  }
+  function thisMonth() { return today().slice(0,7); }
   function startOfWeek() {
     const d = new Date(); d.setDate(d.getDate() - d.getDay()); d.setHours(0,0,0,0); return d;
   }
@@ -732,6 +735,18 @@ body {
                                  .reduce((s,p) => s + (p.paid||0), 0);
     const totalDebt = (d.customers||[]).reduce((s,c) => s + Math.max(0, c.debt||0), 0);
 
+    // cash history (newest-first, matching desktop's storage order)
+    let cashHistory = [];
+    try { cashHistory = JSON.parse(d.cash_history || '[]'); } catch(e) {}
+
+    // صافي اليوم = صافي التغير في الخزنة اليوم (من سجل حركات الخزنة الفعلي)
+    const todayEntries = cashHistory.filter(h => (h.datetime || h.date || '').slice(0,10) === today());
+    const netToday = todayEntries.reduce((s,h) => {
+      const amt = h.amount || 0;
+      const isOut = (h.type === 'purchase' || h.type === 'withdraw' || h.type === 'refund');
+      return s + (isOut ? -amt : amt);
+    }, 0);
+
     // big balance box
     document.getElementById('cash-balance').innerHTML = `
       <div class="big-number-box">
@@ -744,26 +759,34 @@ body {
       statCard('📥','green','مقبوضات اليوم',`${fmt(tdRevenue)} ${C}`,'من المبيعات') +
       statCard('📤','red','مدفوعات اليوم',`${fmt(tdPurchases)} ${C}`,'مشتريات') +
       statCard('💳','yellow','إجمالي الديون',`${fmt(totalDebt)} ${C}`,'من الزبائن') +
-      statCard('📊','blue','صافي اليوم',`${fmt(tdRevenue-tdPurchases)} ${C}`,'');
+      statCard('📊','blue','صافي اليوم',`${fmt(netToday)} ${C}`,'صافي التغير في الخزنة');
 
-    // cash history
-    let cashHistory = [];
-    try { cashHistory = JSON.parse(d.cash_history || '[]'); } catch(e) {}
+    const typeLabel = {
+      deposit:  'إيداع',
+      withdraw: 'سحب',
+      sale:     'بيع',
+      purchase: 'شراء',
+      refund:   'مرتجع',
+    };
 
     let hHtml = `<div class="card"><div class="card-header"><h3>آخر الحركات</h3><span class="badge badge-blue">${cashHistory.length}</span></div>`;
     if (cashHistory.length === 0) {
       hHtml += `<div class="empty-state"><div class="es-icon">📋</div><p>لا توجد حركات مسجلة</p></div>`;
     } else {
-      const recent = [...cashHistory].reverse().slice(0, 20);
+      // cashHistory مخزن مع الأحدث أولاً (unshift)، فلا حاجة لعكسه
+      const recent = cashHistory.slice(0, 20);
       for (const h of recent) {
-        const isIn = (h.amount||0) >= 0;
+        const isOut = (h.type === 'purchase' || h.type === 'withdraw' || h.type === 'refund');
+        const isIn = !isOut;
+        const dt = h.datetime ? new Date(h.datetime) : null;
+        const dateStr = dt ? dt.toLocaleString('ar-DZ', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
         hHtml += `<div class="cash-row">
           <div class="cash-icon">${isIn ? '📥' : '📤'}</div>
           <div class="cash-info">
-            <div class="cash-desc">${esc(h.desc || h.note || (isIn ? 'إيداع' : 'سحب'))}</div>
-            <div class="cash-date">${esc(h.date || '')}</div>
+            <div class="cash-desc">${esc(h.reason || typeLabel[h.type] || (isIn ? 'إيداع' : 'سحب'))}</div>
+            <div class="cash-date">${esc(dateStr)}</div>
           </div>
-          <div class="cash-val ${isIn?'in':'out'}">${isIn?'+':''}${fmt(h.amount)} ${C}</div>
+          <div class="cash-val ${isIn?'in':'out'}">${isIn?'+':'-'}${fmt(h.amount)} ${C}</div>
         </div>`;
       }
     }
