@@ -343,7 +343,7 @@ body {
   </div>
 </div>
 
-<!-- ─── Page: الرئيسية ─── -->
+<!-- ──��� Page: الرئيسية ─── -->
 <div class="page active" id="page-home">
   <div class="section-title">📦 ملخص اليوم</div>
   <div class="stats-grid" id="home-today">
@@ -432,6 +432,16 @@ body {
 <script>
 (() => {
   const roomId = location.pathname.split('/').pop();
+  // توكن الوصول السري — يأتي في الـ hash (#t=...) حتى لا يظهر في سجلات السيرفر
+  const dashToken = new URLSearchParams(location.hash.slice(1)).get('t') || '';
+  if (!dashToken) {
+    document.body.innerHTML = '<div style="max-width:420px;margin:80px auto;text-align:center;font-family:Tajawal,sans-serif;padding:24px">'
+      + '<div style="font-size:48px">🔒</div>'
+      + '<h2 style="margin:12px 0 6px">رابط غير مكتمل</h2>'
+      + '<p style="color:#6B7280;font-size:14px">هذا الرابط ينقصه توكن الوصول السري. افتح لوحة المتابعة من داخل التطبيق (زر سكانر الهاتف) للحصول على الرابط الصحيح.</p>'
+      + '</div>';
+    throw new Error('missing dashboard token');
+  }
   let _data = null; // cached full data
   let _reportPeriod = 'today';
   let _invFilter = 'all';
@@ -495,7 +505,7 @@ body {
     btn.classList.add('loading'); btn.disabled = true;
     setConn('connecting', 'جاري التحديث...');
     try {
-      const res = await fetch(`/api/dashboard-full/${roomId}`, { signal: AbortSignal.timeout(15000) });
+      const res = await fetch(`/api/dashboard-full/${roomId}?token=${encodeURIComponent(dashToken)}`, { signal: AbortSignal.timeout(15000) });
 
       // 503 = POS مقطوع أو الـ server استيقظ للتو
       if (res.status === 503) {
