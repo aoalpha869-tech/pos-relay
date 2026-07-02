@@ -325,6 +325,7 @@ tr:hover td { background: #1a2540; }
 }
 
 .badge-trial    { background: #422006; color: #fbbf24; }
+.badge-trial_day { background: #422006; color: #fbbf24; }
 .badge-annual   { background: #1e3a5f; color: #60a5fa; }
 .badge-lifetime { background: #2d1b69; color: #a78bfa; }
 
@@ -557,6 +558,7 @@ tr.revoked-row td { opacity: 0.45; }
           <div class="field-label">نوع الترخيص</div>
           <select class="field-select" id="licType">
             <option value="trial">تجربة — 7 أيام</option>
+            <option value="trial_day">تجربة — يوم واحد</option>
             <option value="annual" selected>سنوي — 365 يوم</option>
             <option value="lifetime">مدى الحياة ♾️</option>
           </select>
@@ -730,7 +732,7 @@ function renderTable() {
   }
 
   tbody.innerHTML = rows.map(l => {
-    const typeLabel = { trial: 'تجربة', annual: 'سنوي', lifetime: 'مدى الحياة' }[l.type] || l.type;
+    const typeLabel = { trial: 'تجربة', trial_day: 'تجربة يوم', annual: 'سنوي', lifetime: 'مدى الحياة' }[l.type] || l.type;
     const typeClass = `badge badge-${l.type}`;
 
     let statusHtml;
@@ -826,7 +828,7 @@ function copyNewKey() {
 }
 
 function whatsappKey() {
-  const typeMap = { trial: 'تجربة 7 أيام', annual: 'اشتراك سنوي', lifetime: 'مدى الحياة' };
+  const typeMap = { trial: 'تجربة 7 أيام', trial_day: 'تجربة يوم واحد', annual: 'اشتراك سنوي', lifetime: 'مدى الحياة' };
   const type = document.getElementById('licType').value;
   const msg = `🔑 مفتاح تفعيل برنامج نقطة البيع\n\nالنوع: ${typeMap[type] || type}\nالمفتاح:\n${newKeyForCopy}\n\nشكراً لثقتكم بنا 🙏`;
   window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
