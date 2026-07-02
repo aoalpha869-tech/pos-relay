@@ -123,6 +123,13 @@ function generateKey() {
 
 function today()      { return new Date().toISOString().slice(0, 10); }
 function addDays(d)   { const x = new Date(); x.setDate(x.getDate() + d); return x.toISOString().slice(0, 10); }
+// يحوّل أي قيمة تاريخ (Date من PostgreSQL أو نص) إلى صيغة موحّدة YYYY-MM-DD
+// مهم جداً: بدونه تُقارَن كائنات Date بنصوص فتفشل المقارنة وتبقى التراخيص المنتهية "صالحة"
+function toDateStr(d) {
+  if (!d) return null;
+  if (typeof d === 'string') return d.slice(0, 10);
+  try { return new Date(d).toISOString().slice(0, 10); } catch (_) { return null; }
+}
 
 // ─────────────────────────────────────────────
 //  Rate limiting بسيط في الذاكرة (ضد brute-force)
@@ -184,13 +191,15 @@ app.post('/api/license/activate', rateLimit(20), async (req, res) => {
         [lic.key, instance_id]
       ).catch(() => {});
     }
-    if (expires_at && expires_at < today())
-      return res.json({ ok: false, error: 'انتهت صلاحية هذا المفتاح' });
+    // توحيد صيغة التاريخ قبل المقارنة (إصلاح الخلل: Date مقابل نص كان يفشل دائماً)
+    const exp = toDateStr(expires_at);
+    if (exp && exp < today())
+      return res.json({ ok: false, error: 'انتهت صلاحية هذا المفتاح', expired: true });
 
     let days_left = -1;
-    if (expires_at) days_left = Math.max(0, Math.ceil((new Date(expires_at) - new Date(today())) / 86400000));
-    res.json({ ok: true, type: lic.type, expires_at: expires_at || null, days_left,
-      activated_at: isFirstActivation ? today() : lic.activated_at });
+    if (exp) days_left = Math.max(0, Math.ceil((new Date(exp) - new Date(today())) / 86400000));
+    res.json({ ok: true, type: lic.type, expires_at: exp || null, days_left,
+      activated_at: isFirstActivation ? today() : toDateStr(lic.activated_at) });
   } catch (err) {
     console.error('[license/activate]', err.message);
     res.status(500).json({ error: 'خطأ في الخادم' });
@@ -208,11 +217,13 @@ app.post('/api/license/verify', rateLimit(40), async (req, res) => {
     if (result.rows.length === 0) return res.json({ ok: false, error: 'الترخيص غير موجود' });
     const lic = result.rows[0];
     if (lic.revoked) return res.json({ ok: false, error: 'تم إلغاء هذا الترخيص', revoked: true });
-    if (lic.expires_at && lic.expires_at < today())
+    // توحيد صيغة التاريخ قبل المقارنة (إصلاح الخلل: Date مقابل نص كان يفشل دائماً)
+    const exp = toDateStr(lic.expires_at);
+    if (exp && exp < today())
       return res.json({ ok: false, error: 'انتهت صلاحية الترخيص', expired: true });
 
     let days_left = -1;
-    if (lic.expires_at) days_left = Math.max(0, Math.ceil((new Date(lic.expires_at) - new Date(today())) / 86400000));
+    if (exp) days_left = Math.max(0, Math.ceil((new Date(exp) - new Date(today())) / 86400000));
     if (room_id && room_id.trim()) {
       pool.query(
         `INSERT INTO client_snapshots (license_key, last_seen, is_online, room_id)
@@ -221,7 +232,7 @@ app.post('/api/license/verify', rateLimit(40), async (req, res) => {
         [lic.key, room_id.trim()]
       ).catch(() => {});
     }
-    res.json({ ok: true, type: lic.type, expires_at: lic.expires_at || null, days_left });
+    res.json({ ok: true, type: lic.type, expires_at: exp || null, days_left });
   } catch (err) {
     console.error('[license/verify]', err.message);
     res.status(500).json({ ok: false, error: 'خطأ في الخادم' });
@@ -257,7 +268,7 @@ app.post('/api/license/register-room', rateLimit(40), async (req, res) => {
 // ═════════════════════════════════════════════
 app.post('/api/admin/create', rateLimit(30), requireAdmin, async (req, res) => {
   const { type = 'trial', note = '' } = req.body;
-  const duration = { trial: 7, annual: 365, lifetime: 0 }[type] ?? 7;
+  const duration = { trial: 7, trial_day: 1, annual: 365, lifetime: 0 }[type] ?? 7;
   let key, tries = 0;
   do {
     key = generateKey();
