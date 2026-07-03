@@ -121,8 +121,10 @@ function generateKey() {
   return `${part()}-${part()}-${part()}-${part()}`;
 }
 
-function today()      { return new Date().toISOString().slice(0, 10); }
-function addDays(d)   { const x = new Date(); x.setDate(x.getDate() + d); return x.toISOString().slice(0, 10); }
+// توقيت الجزائر UTC+1 — نحسب التاريخ محلياً لا بتوقيت UTC حتى تتطابق الأيام مع ساعة المستخدم
+const TZ_OFFSET_MS = 60 * 60 * 1000; // +1 ساعة
+function today()      { return new Date(Date.now() + TZ_OFFSET_MS).toISOString().slice(0, 10); }
+function addDays(d)   { const x = new Date(Date.now() + TZ_OFFSET_MS); x.setUTCDate(x.getUTCDate() + d); return x.toISOString().slice(0, 10); }
 // يحوّل أي قيمة تاريخ (Date من PostgreSQL أو نص) إلى صيغة موحّدة YYYY-MM-DD
 // مهم جداً: بدونه تُقارَن كائنات Date بنصوص فتفشل المقارنة وتبقى التراخيص المنتهية "صالحة"
 function toDateStr(d) {
@@ -193,7 +195,7 @@ app.post('/api/license/activate', rateLimit(20), async (req, res) => {
     }
     // توحيد صيغة التاريخ قبل المقارنة (إصلاح الخلل: Date مقابل نص كان يفشل دائماً)
     const exp = toDateStr(expires_at);
-    if (exp && exp < today())
+    if (exp && exp <= today())
       return res.json({ ok: false, error: 'انتهت صلاحية هذا المفتاح', expired: true });
 
     let days_left = -1;
@@ -219,7 +221,7 @@ app.post('/api/license/verify', rateLimit(40), async (req, res) => {
     if (lic.revoked) return res.json({ ok: false, error: 'تم إلغاء هذا الترخيص', revoked: true });
     // توحيد صيغة التاريخ قبل المقارنة (إصلاح الخلل: Date مقابل نص كان يفشل دائماً)
     const exp = toDateStr(lic.expires_at);
-    if (exp && exp < today())
+    if (exp && exp <= today())
       return res.json({ ok: false, error: 'انتهت صلاحية الترخيص', expired: true });
 
     let days_left = -1;
