@@ -204,7 +204,7 @@ app.post('/api/license/activate', rateLimit(20), async (req, res) => {
       activated_at: isFirstActivation ? today() : toDateStr(lic.activated_at) });
   } catch (err) {
     console.error('[license/activate]', err.message);
-    res.status(500).json({ error: 'خطأ في الخادم' });
+    res.status(500).json({ error: 'خطأ في الخاد��' });
   }
 });
 
@@ -474,6 +474,30 @@ app.get('/api/dashboard-full/:roomId', async (req, res) => {
   }
 });
 
+// ── جسر تشغيل نقطة البيع عن بُعد (الهاتف السحابي) — يمرّر طلب REST إلى الحاسوب عبر الغرفة
+app.post('/api/relay/:roomId', rateLimit(120), async (req, res) => {
+  const room = getRoom(req.params.roomId);
+  if (!room.pos || room.pos.readyState !== 1)
+    return res.status(503).json({ error: 'POS غير متصل حالياً' });
+  const token = req.query.token || req.headers['x-dash-token'];
+  if (!checkDashToken(room, token))
+    return res.status(401).json({ error: 'توكن غير صالح' });
+  const { method, path, body } = req.body || {};
+  if (!path) return res.status(400).json({ error: 'path مطلوب' });
+  const reqId = crypto.randomBytes(8).toString('hex');
+  try {
+    const result = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { room.pendingReqs.delete(reqId); reject(new Error('timeout')); }, 15000);
+      room.pendingReqs.set(reqId, { resolve, reject, timer });
+      room.pos.send(JSON.stringify({ type: 'api_request', reqId, method: method || 'GET', path, body: body || '' }));
+    });
+    const status = (result && result.status) || 200;
+    res.status(status).type('application/json').send((result && result.body) || '{}');
+  } catch (e) {
+    res.status(504).json({ error: e.message === 'timeout' ? 'انتهى وقت الانتظار' : e.message });
+  }
+});
+
 wss.on('connection', (ws, req) => {
   const url    = new URL(req.url, 'http://localhost');
   const role   = url.searchParams.get('role');
@@ -520,7 +544,7 @@ wss.on('connection', (ws, req) => {
       try {
         const msg = JSON.parse(txt);
         if (msg.type === 'ping') { ws.send(JSON.stringify({ type: 'pong' })); return; }
-        if ((msg.type === 'dashboard_response' || msg.type === 'dashboard_full_response') && msg.reqId) {
+        if ((msg.type === 'dashboard_response' || msg.type === 'dashboard_full_response' || msg.type === 'api_response') && msg.reqId) {
           const pending = room.pendingReqs.get(msg.reqId);
           if (pending) {
             clearTimeout(pending.timer);
