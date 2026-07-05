@@ -411,6 +411,10 @@ app.get('/api/admin/client-live/:key', rateLimit(30), async (req, res) => {
 function sendFile(res, name) {
   const p = path.join(__dirname, name);
   if (!fs.existsSync(p)) return res.status(404).send(name + ' not found');
+  // منع التخزين المؤقت حتى تظهر آخر نسخة دائماً (لا نسخة قديمة مخزّنة)
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
   res.sendFile(p);
 }
 app.get('/scanner/:roomId',   (req, res) => sendFile(res, 'scanner.html'));
