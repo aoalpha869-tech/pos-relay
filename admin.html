@@ -704,7 +704,7 @@ function renderStats() {
   let active = 0, unused = 0, expired = 0;
   for (const l of allLicenses) {
     if (!l.activated_at) { unused++; }
-    else if (l.revoked || (l.expires_at && l.expires_at <= today)) { expired++; }
+    else if (l.revoked || (l.expires_at && String(l.expires_at).slice(0,10) <= today)) { expired++; }
     else { active++; }
   }
   document.getElementById('statTotal').textContent   = allLicenses.length;
@@ -740,7 +740,7 @@ function renderTable() {
       statusHtml = '<span class="status-expired">⛔ مقطوع</span>';
     } else if (!l.activated_at) {
       statusHtml = '<span class="status-unused">● غير مستخدم</span>';
-    } else if (l.expires_at && l.expires_at <= today) {
+    } else if (l.expires_at && String(l.expires_at).slice(0,10) <= today) {
       statusHtml = '<span class="status-expired">● منتهي</span>';
     } else {
       const daysLeft = l.expires_at
