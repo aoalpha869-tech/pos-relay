@@ -204,7 +204,7 @@ app.post('/api/license/activate', rateLimit(20), async (req, res) => {
       activated_at: isFirstActivation ? today() : toDateStr(lic.activated_at) });
   } catch (err) {
     console.error('[license/activate]', err.message);
-    res.status(500).json({ error: 'خطأ في الخاد��' });
+    res.status(500).json({ error: 'خط�� في الخاد��' });
   }
 });
 
@@ -355,7 +355,7 @@ app.post('/api/admin/link-room', rateLimit(30), requireAdmin, async (req, res) =
       [lic.rows[0].key, room_id.trim()]
     );
     const room = rooms.get(room_id.trim());
-    if (room?.pos?.readyState === 1) {
+    if (room && isPosOnline(room)) {
       await pool.query('UPDATE client_snapshots SET is_online = TRUE WHERE license_key = $1', [lic.rows[0].key]);
     }
     res.json({ ok: true });
@@ -385,7 +385,7 @@ app.get('/api/admin/client-live/:key', rateLimit(30), async (req, res) => {
   if (!row || !row.room_id || !row.is_online)
     return res.status(503).json({ error: 'الجهاز غير متصل حالياً', offline: true });
   const room = getRoom(row.room_id);
-  if (!room.pos || room.pos.readyState !== 1) {
+  if (!isPosOnline(room)) {
     await pool.query('UPDATE client_snapshots SET is_online = FALSE WHERE license_key = $1', [key]).catch(() => {});
     return res.status(503).json({ error: 'الجهاز غير متصل حالياً', offline: true });
   }
@@ -429,15 +429,37 @@ app.get('/',       (_, res) => sendFile(res, 'download.html'));
 const rooms = new Map();
 function getRoom(id) {
   if (!rooms.has(id))
-    rooms.set(id, { pos: null, phones: [], pendingReqs: new Map(), token: null });
+    rooms.set(id, { pos: null, phones: [], pendingReqs: new Map(), token: null, outbox: [], posWaiters: [], posLastSeen: 0 });
   return rooms.get(id);
+}
+
+// ── دعم HTTP long-polling للـ POS (بديل مستقر عن WebSocket) ──
+const POS_STALE_MS = 35000;
+function isPosOnline(room) {
+  if (room.pos && room.pos.readyState === 1) return true;
+  return !!room.posLastSeen && (Date.now() - room.posLastSeen < POS_STALE_MS);
+}
+function flushPosWaiters(room) {
+  if (!room.outbox.length || !room.posWaiters.length) return;
+  const waiter = room.posWaiters.shift();
+  clearTimeout(waiter.timer);
+  const msgs = room.outbox.splice(0, room.outbox.length);
+  try { waiter.res.json({ messages: msgs }); } catch (e) {}
+}
+function deliverToPos(room, msgObj) {
+  if (room.pos && room.pos.readyState === 1) {
+    try { room.pos.send(JSON.stringify(msgObj)); return; } catch (e) {}
+  }
+  room.outbox.push(msgObj);
+  if (room.outbox.length > 50) room.outbox.shift();
+  flushPosWaiters(room);
 }
 
 async function posRequest(room, type, reqId, timeout = 12000) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => { room.pendingReqs.delete(reqId); reject(new Error('timeout')); }, timeout);
     room.pendingReqs.set(reqId, { resolve, reject, timer });
-    room.pos.send(JSON.stringify({ type, reqId }));
+    deliverToPos(room, { type, reqId });
   });
 }
 
@@ -450,7 +472,7 @@ function checkDashToken(room, token) {
 
 app.get('/api/dashboard/:roomId', async (req, res) => {
   const room = getRoom(req.params.roomId);
-  if (!room.pos || room.pos.readyState !== 1)
+  if (!isPosOnline(room))
     return res.status(503).json({ error: 'POS غير متصل حالياً' });
   if (!checkDashToken(room, req.query.token))
     return res.status(401).json({ error: 'توكن غير صالح' });
@@ -465,7 +487,7 @@ app.get('/api/dashboard/:roomId', async (req, res) => {
 
 app.get('/api/dashboard-full/:roomId', async (req, res) => {
   const room = getRoom(req.params.roomId);
-  if (!room.pos || room.pos.readyState !== 1)
+  if (!isPosOnline(room))
     return res.status(503).json({ error: 'POS غير متصل حالياً' });
   if (!checkDashToken(room, req.query.token))
     return res.status(401).json({ error: 'توكن غير صالح' });
@@ -481,7 +503,7 @@ app.get('/api/dashboard-full/:roomId', async (req, res) => {
 // ── جسر تشغيل نقطة البيع عن بُعد (الهاتف السحابي) — يمرّر طلب REST إلى الحاسوب عبر الغرفة
 app.post('/api/relay/:roomId', rateLimit(120), async (req, res) => {
   const room = getRoom(req.params.roomId);
-  if (!room.pos || room.pos.readyState !== 1)
+  if (!isPosOnline(room))
     return res.status(503).json({ error: 'POS غير متصل حالياً' });
   const token = req.query.token || req.headers['x-dash-token'];
   if (!checkDashToken(room, token))
@@ -493,7 +515,7 @@ app.post('/api/relay/:roomId', rateLimit(120), async (req, res) => {
     const result = await new Promise((resolve, reject) => {
       const timer = setTimeout(() => { room.pendingReqs.delete(reqId); reject(new Error('timeout')); }, 15000);
       room.pendingReqs.set(reqId, { resolve, reject, timer });
-      room.pos.send(JSON.stringify({ type: 'api_request', reqId, method: method || 'GET', path, body: body || '' }));
+      deliverToPos(room, { type: 'api_request', reqId, method: method || 'GET', path, body: body || '' });
     });
     const status = (result && result.status) || 200;
     res.status(status).type('application/json').send((result && result.body) || '{}');
@@ -501,6 +523,79 @@ app.post('/api/relay/:roomId', rateLimit(120), async (req, res) => {
     res.status(504).json({ error: e.message === 'timeout' ? 'انتهى وقت الانتظار' : e.message });
   }
 });
+
+// ═════ POS عبر HTTP Long-Polling (بديل WebSocket — مستقر) ═════
+app.get('/api/pos-poll/:roomId', rateLimit(600), (req, res) => {
+  const roomId = req.params.roomId;
+  const room = getRoom(roomId);
+  const token = req.query.token || req.headers['x-dash-token'];
+  if (!token || String(token).length < 16) return res.status(401).json({ error: 'توكن غير صالح' });
+  const firstTime = !room.posLastSeen;
+  room.token = token;
+  room.posLastSeen = Date.now();
+  pool.query(`UPDATE client_snapshots SET is_online = TRUE, last_seen = NOW() WHERE room_id = $1`, [roomId]).catch(() => {});
+  if (firstTime) {
+    const autoReqId = 'auto_' + crypto.randomBytes(6).toString('hex');
+    const timer = setTimeout(() => room.pendingReqs.delete(autoReqId), 15000);
+    room.pendingReqs.set(autoReqId, {
+      timer,
+      resolve: async (data) => {
+        try {
+          await pool.query(
+            `UPDATE client_snapshots SET snapshot = $1, last_seen = NOW(), is_online = TRUE WHERE room_id = $2`,
+            [JSON.stringify(data), roomId]
+          );
+        } catch (e) {}
+      },
+      reject: () => {}
+    });
+    room.outbox.push({ type: 'dashboard_full_request', reqId: autoReqId });
+  }
+  if (room.outbox.length) {
+    const msgs = room.outbox.splice(0, room.outbox.length);
+    return res.json({ messages: msgs });
+  }
+  const waiter = { res, timer: null };
+  waiter.timer = setTimeout(() => {
+    const i = room.posWaiters.indexOf(waiter);
+    if (i >= 0) room.posWaiters.splice(i, 1);
+    try { res.json({ messages: [] }); } catch (e) {}
+  }, 25000);
+  room.posWaiters.push(waiter);
+  req.on('close', () => {
+    const i = room.posWaiters.indexOf(waiter);
+    if (i >= 0) { clearTimeout(waiter.timer); room.posWaiters.splice(i, 1); }
+  });
+});
+
+app.post('/api/pos-respond/:roomId', rateLimit(600), (req, res) => {
+  const room = getRoom(req.params.roomId);
+  const token = req.query.token || req.headers['x-dash-token'];
+  if (!checkDashToken(room, token)) return res.status(401).json({ error: 'توكن غير صالح' });
+  room.posLastSeen = Date.now();
+  const { reqId, data } = req.body || {};
+  if (reqId && room.pendingReqs.has(reqId)) {
+    const pending = room.pendingReqs.get(reqId);
+    clearTimeout(pending.timer);
+    room.pendingReqs.delete(reqId);
+    pending.resolve(data);
+  }
+  res.json({ ok: true });
+});
+
+// كنس اتصالات POS الميتة (توقّفت عن الاستطلاع)
+setInterval(() => {
+  const now = Date.now();
+  for (const [roomId, room] of rooms) {
+    const wsAlive = room.pos && room.pos.readyState === 1;
+    if (room.posLastSeen && !wsAlive && (now - room.posLastSeen >= POS_STALE_MS)) {
+      room.posLastSeen = 0;
+      pool.query(`UPDATE client_snapshots SET is_online = FALSE, last_seen = NOW() WHERE room_id = $1`, [roomId]).catch(() => {});
+      for (const [, pending] of room.pendingReqs) { clearTimeout(pending.timer); try { pending.reject(new Error('POS انقطع')); } catch (e) {} }
+      room.pendingReqs.clear();
+    }
+  }
+}, 15000);
 
 wss.on('connection', (ws, req) => {
   const url    = new URL(req.url, 'http://localhost');
@@ -574,8 +669,7 @@ wss.on('connection', (ws, req) => {
   } else if (role === 'phone') {
     room.phones.push(ws);
     console.log(`[Phone] connected room=${roomId} total=${room.phones.length}`);
-    if (room.pos?.readyState === 1)
-      room.pos.send(JSON.stringify({ type: 'phone_connected', count: room.phones.length }));
+    deliverToPos(room, { type: 'phone_connected', count: room.phones.length });
     ws.on('message', raw => {
       const txt = raw.toString().trim();
       if (!txt) return;
@@ -583,13 +677,11 @@ wss.on('connection', (ws, req) => {
         const msg = JSON.parse(txt);
         if (msg.type === 'ping') { ws.send(JSON.stringify({ type: 'pong' })); return; }
       } catch (e) {}
-      if (room.pos?.readyState === 1)
-        room.pos.send(JSON.stringify({ type: 'barcode', value: txt }));
+      deliverToPos(room, { type: 'barcode', value: txt });
     });
     ws.on('close', () => {
       room.phones = room.phones.filter(p => p !== ws);
-      if (room.pos?.readyState === 1)
-        room.pos.send(JSON.stringify({ type: 'phone_disconnected', count: room.phones.length }));
+      deliverToPos(room, { type: 'phone_disconnected', count: room.phones.length });
     });
   }
 });
@@ -613,7 +705,10 @@ setInterval(() => {
 //  KEEP-ALIVE — يمنع نوم السيرفر على Render المجاني
 //  يرسل طلباً لنفسه كل 10 دقائق (< 15 دقيقة حد الخمول)
 // ─────────────────────────────────────────────
-const SELF_URL = process.env.RENDER_EXTERNAL_URL; // يضبطه Render تلقائياً
+// يعمل على أي منصة: Fly.io / Railway / Koyeb / VPS / Render
+const SELF_URL = process.env.PUBLIC_URL
+  || process.env.RENDER_EXTERNAL_URL
+  || (process.env.FLY_APP_NAME ? `https://${process.env.FLY_APP_NAME}.fly.dev` : null);
 if (SELF_URL && typeof fetch === 'function') {
   const KEEP_ALIVE = 10 * 60 * 1000; // 10 دقائق
   setInterval(() => {
