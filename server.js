@@ -37,7 +37,7 @@ const app    = express();
 const server = http.createServer(app);
 const wss    = new WebSocketServer({ server });
 
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 
 // ─────────────────────────────────────────────
 //  CORS — مقيّد عبر ALLOWED_ORIGINS إن وُجد
