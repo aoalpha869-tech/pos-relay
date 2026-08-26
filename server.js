@@ -290,15 +290,55 @@ app.post('/api/admin/create', rateLimit(30), requireAdmin, async (req, res) => {
   }
 });
 
-app.get('/api/admin/rooms', rateLimit(30), requireAdmin, (req, res) => {
-  const list = Array.from(rooms.entries()).map(([id, r]) => ({
-    room_id: id,
-    token: r.token,
-    pos_connected: !!(r.pos && r.pos.readyState === 1),
-    phones_connected: r.phones.filter(p => p.readyState === 1).length,
-    pending_requests: r.pendingReqs.size,
-  }));
-  res.json({ ok: true, count: list.length, rooms: list });
+app.get('/api/admin/rooms', rateLimit(30), requireAdmin, async (req, res) => {
+  try {
+    // السجل الدائم: كل غرفة سجّلت روحها مرة، حتى لو غير متصلة حاليًا
+    const result = await pool.query(`
+      SELECT cs.room_id, cs.is_online AS db_online, cs.last_seen,
+             l.key AS license_key, l.note
+      FROM client_snapshots cs
+      LEFT JOIN licenses l ON l.key = cs.license_key
+      WHERE cs.room_id IS NOT NULL
+      ORDER BY cs.last_seen DESC
+    `);
+
+    const list = result.rows.map(row => {
+      const live = rooms.get(row.room_id); // الحالة الحية إذا كانت متوفرة فالذاكرة الآن
+      const posLive = !!(live && live.pos && live.pos.readyState === 1);
+      return {
+        room_id: row.room_id,
+        token: live ? live.token : null,
+        license_key: row.license_key,
+        note: row.note || '',
+        // نعتمد الحالة الحية إذا كان السيرفر عارفها الآن، وإلا نرجع لآخر حالة مسجلة فالقاعدة
+        pos_connected: live ? posLive : !!row.db_online,
+        phones_connected: live ? live.phones.filter(p => p.readyState === 1).length : 0,
+        pending_requests: live ? live.pendingReqs.size : 0,
+        last_seen: row.last_seen,
+      };
+    });
+
+    // أضف أي غرفة حية فالذاكرة الآن وماكانتش بعد فالقاعدة (نادر، لكن للاحتياط)
+    for (const [id, r] of rooms.entries()) {
+      if (!list.find(x => x.room_id === id)) {
+        list.push({
+          room_id: id,
+          token: r.token,
+          license_key: null,
+          note: '',
+          pos_connected: !!(r.pos && r.pos.readyState === 1),
+          phones_connected: r.phones.filter(p => p.readyState === 1).length,
+          pending_requests: r.pendingReqs.size,
+          last_seen: null,
+        });
+      }
+    }
+
+    res.json({ ok: true, count: list.length, rooms: list });
+  } catch (err) {
+    console.error('[admin/rooms]', err.message);
+    res.status(500).json({ ok: false, error: 'فشل جلب قائمة الغرف' });
+  }
 });
 
 app.post('/api/admin/list', rateLimit(30), requireAdmin, async (req, res) => {

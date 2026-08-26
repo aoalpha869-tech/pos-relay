@@ -629,16 +629,17 @@ tr.revoked-row td { opacity: 0.45; }
         <table>
           <thead>
             <tr>
+              <th>العميل / الملاحظة</th>
               <th>Room ID</th>
               <th>Token</th>
-              <th>POS متصل؟</th>
+              <th>الحالة</th>
+              <th>آخر ظهور</th>
               <th>عدد الهواتف</th>
-              <th>طلبات معلّقة</th>
               <th>إجراءات</th>
             </tr>
           </thead>
           <tbody id="roomsBody">
-            <tr class="empty-row"><td colspan="6">جاري التحميل...</td></tr>
+            <tr class="empty-row"><td colspan="7">جاري التحميل...</td></tr>
           </tbody>
         </table>
       </div>
@@ -727,6 +728,18 @@ async function loadLicenses() {
 }
 
 // ── الغرف المفتوحة (Rooms) ────────────────
+function timeAgo(iso) {
+  if (!iso) return '—';
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'الآن';
+  if (mins < 60) return `منذ ${mins} د`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `منذ ${hrs} س`;
+  const days = Math.floor(hrs / 24);
+  return `منذ ${days} ي`;
+}
+
 async function loadRooms() {
   const tbody = document.getElementById('roomsBody');
   try {
@@ -735,30 +748,31 @@ async function loadRooms() {
     }).then(r => r.json());
 
     if (!res.ok) {
-      tbody.innerHTML = `<tr class="empty-row"><td colspan="6">⛔ ${escHtml(res.error || 'خطأ')}</td></tr>`;
+      tbody.innerHTML = `<tr class="empty-row"><td colspan="7">⛔ ${escHtml(res.error || 'خطأ')}</td></tr>`;
       return;
     }
     if (!res.rooms || res.rooms.length === 0) {
-      tbody.innerHTML = '<tr class="empty-row"><td colspan="6">لا توجد غرف مفتوحة حاليًا</td></tr>';
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="7">لا توجد غرف مسجّلة بعد</td></tr>';
       return;
     }
     tbody.innerHTML = res.rooms.map(r => `
       <tr>
-        <td>${escHtml(r.room_id)}</td>
+        <td>${escHtml(r.note || '—')}</td>
+        <td style="font-size:11px">${escHtml(r.room_id)}</td>
         <td style="font-family:monospace;font-size:12px">${escHtml(r.token || '—')}</td>
         <td>${r.pos_connected ? '🟢 متصل' : '🔴 غير متصل'}</td>
+        <td>${escHtml(timeAgo(r.last_seen))}</td>
         <td>${r.phones_connected}</td>
-        <td>${r.pending_requests}</td>
         <td><button class="copy-btn" onclick="copyRoomToken('${escHtml(r.token || '')}')">📋 نسخ Token</button></td>
       </tr>
     `).join('');
   } catch (e) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="6">⛔ لا يمكن الاتصال بالسيرفر</td></tr>';
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="7">⛔ لا يمكن الاتصال بالسيرفر</td></tr>';
   }
 }
 
 function copyRoomToken(token) {
-  if (!token) { showToast('لا يوجد token لهذه الغرفة', 'error'); return; }
+  if (!token) { showToast('لا يوجد token متوفر الآن لهذه الغرفة (الجهاز غير متصل حاليًا)', 'error'); return; }
   navigator.clipboard.writeText(token);
   showToast('تم نسخ الـ Token ✓');
 }
