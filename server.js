@@ -90,9 +90,13 @@ async function initDB() {
       last_seen     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       is_online     BOOLEAN NOT NULL DEFAULT FALSE,
       room_id       TEXT DEFAULT NULL,
+      token         TEXT DEFAULT NULL,
       snapshot      JSONB DEFAULT NULL
     )
   `);
+  await pool.query(`
+    ALTER TABLE client_snapshots ADD COLUMN IF NOT EXISTS token TEXT DEFAULT NULL
+  `).catch(() => {});
   console.log('[DB] جداول قاعدة البيانات جاهزة');
 }
 initDB().catch(err => console.error('[DB] فشل إنشاء الجداول:', err.message));
@@ -294,7 +298,7 @@ app.get('/api/admin/rooms', rateLimit(30), requireAdmin, async (req, res) => {
   try {
     // السجل الدائم: كل غرفة سجّلت روحها مرة، حتى لو غير متصلة حاليًا
     const result = await pool.query(`
-      SELECT cs.room_id, cs.is_online AS db_online, cs.last_seen,
+      SELECT cs.room_id, cs.is_online AS db_online, cs.last_seen, cs.token AS db_token,
              l.key AS license_key, l.note
       FROM client_snapshots cs
       LEFT JOIN licenses l ON l.key = cs.license_key
@@ -307,7 +311,8 @@ app.get('/api/admin/rooms', rateLimit(30), requireAdmin, async (req, res) => {
       const posLive = !!(live && live.pos && live.pos.readyState === 1);
       return {
         room_id: row.room_id,
-        token: live ? live.token : null,
+        // نفضّل التوكن الحي، وإلا نرجع لآخر توكن محفوظ فالقاعدة
+        token: (live ? live.token : null) || row.db_token || null,
         license_key: row.license_key,
         note: row.note || '',
         // نعتمد الحالة الحية إذا كان السيرفر عارفها الآن، وإلا نرجع لآخر حالة مسجلة فالقاعدة
@@ -572,7 +577,7 @@ wss.on('connection', (ws, req) => {
     console.log(`[POS] connected room=${roomId}`);
     ws.send(JSON.stringify({ type: 'status', msg: 'connected' }));
     pool.query(
-      `UPDATE client_snapshots SET is_online = TRUE, last_seen = NOW() WHERE room_id = $1`, [roomId]
+      `UPDATE client_snapshots SET is_online = TRUE, last_seen = NOW(), token = $2 WHERE room_id = $1`, [roomId, token]
     ).catch(() => {});
 
     const autoReqId = 'auto_' + crypto.randomBytes(6).toString('hex');
