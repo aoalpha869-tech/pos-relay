@@ -511,7 +511,7 @@ tr.revoked-row td { opacity: 0.45; }
     <div class="login-title">لوحة التحكم</div>
     <div class="login-sub">إدارة مفاتيح الترخيص</div>
     <input class="login-input" id="passInput" type="password"
-           placeholder="كلمة المرور" onkeydown="if(e.key==='Enter')login()">
+           placeholder="كلمة المرور" onkeydown="if(event.key==='Enter')login()">
     <button class="login-btn" onclick="login()">دخول</button>
     <div class="login-err" id="loginErr"></div>
   </div>
@@ -617,6 +617,34 @@ tr.revoked-row td { opacity: 0.45; }
       </div>
     </div>
 
+    <!-- الغرف المفتوحة (Rooms) -->
+    <div class="table-section" style="margin-top:24px">
+      <div class="table-header">
+        <div class="section-title" style="margin:0">🔌 الغرف المفتوحة (Rooms)</div>
+        <div style="display:flex;gap:10px;align-items:center">
+          <button class="refresh-btn" onclick="loadRooms()">↻ تحديث</button>
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>العميل / الملاحظة</th>
+              <th>Room ID</th>
+              <th>Token</th>
+              <th>الحالة</th>
+              <th>آخر ظهور</th>
+              <th>عدد الهواتف</th>
+              <th>إجراءات</th>
+            </tr>
+          </thead>
+          <tbody id="roomsBody">
+            <tr class="empty-row"><td colspan="7">جاري التحميل...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -657,6 +685,7 @@ async function login() {
       allLicenses = res.licenses || [];
       renderStats();
       renderTable();
+      loadRooms();
     } else {
       errEl.textContent = '⛔ ' + (res.error || 'كلمة مرور غير صحيحة');
     }
@@ -696,6 +725,67 @@ async function loadLicenses() {
   } catch(e) {
     showToast('خطأ في تحميل البيانات', 'error');
   }
+}
+
+// ── الغرف المفتوحة (Rooms) ────────────────
+function timeAgo(iso) {
+  if (!iso) return '—';
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'الآن';
+  if (mins < 60) return `منذ ${mins} د`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `منذ ${hrs} س`;
+  const days = Math.floor(hrs / 24);
+  return `منذ ${days} ي`;
+}
+
+async function loadRooms() {
+  const tbody = document.getElementById('roomsBody');
+  try {
+    const res = await fetch(API + '/api/admin/rooms', {
+      headers: { 'x-admin-password': adminPass }
+    }).then(r => r.json());
+
+    if (!res.ok) {
+      tbody.innerHTML = `<tr class="empty-row"><td colspan="7">⛔ ${escHtml(res.error || 'خطأ')}</td></tr>`;
+      return;
+    }
+    if (!res.rooms || res.rooms.length === 0) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="7">لا توجد غرف مسجّلة بعد</td></tr>';
+      return;
+    }
+    tbody.innerHTML = res.rooms.map(r => `
+      <tr>
+        <td>${escHtml(r.note || '—')}</td>
+        <td style="font-size:11px">${escHtml(r.room_id)}</td>
+        <td style="font-family:monospace;font-size:12px">${escHtml(r.token || '—')}</td>
+        <td>${r.pos_connected ? '🟢 متصل' : '🔴 غير متصل'}</td>
+        <td>${escHtml(timeAgo(r.last_seen))}</td>
+        <td>${r.phones_connected}</td>
+        <td style="display:flex;gap:6px">
+          <button class="copy-btn" style="background:#0f766e" onclick="openRoomDashboard('${escHtml(r.room_id)}','${escHtml(r.token || '')}')">👁️ عرض</button>
+          <button class="copy-btn" onclick="copyRoomToken('${escHtml(r.token || '')}')">📋 نسخ Token</button>
+        </td>
+      </tr>
+    `).join('');
+  } catch (e) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="7">⛔ لا يمكن الاتصال بالسيرفر</td></tr>';
+  }
+}
+
+function copyRoomToken(token) {
+  if (!token) { showToast('لا يوجد token متوفر الآن لهذه الغرفة (الجهاز غير متصل حاليًا)', 'error'); return; }
+  navigator.clipboard.writeText(token);
+  showToast('تم نسخ الـ Token ✓');
+}
+
+function openRoomDashboard(roomId, token) {
+  if (!token) {
+    showToast('لا يوجد token محفوظ لهذه الغرفة بعد — خاص الجهاز يتصل مرة واحدة أولاً', 'error');
+    return;
+  }
+  window.open(`${API}/dashboard/${encodeURIComponent(roomId)}#t=${encodeURIComponent(token)}`, '_blank');
 }
 
 // ── إحصائيات ──────────────────────────────
