@@ -545,19 +545,60 @@ app.get('/api/dashboard/:roomId', async (req, res) => {
 });
 
 app.get('/api/dashboard-full/:roomId', async (req, res) => {
-  const room = getRoom(req.params.roomId);
+  const roomId = req.params.roomId;
+  const room = getRoom(roomId);
   if (!posConnected(room))
     return res.status(503).json({ error: 'POS غير متصل حالياً' });
   if (!checkDashToken(room, req.query.token))
     return res.status(401).json({ error: 'توكن غير صالح' });
+
+  // ── نجرّب أولاً نرجّع آخر نسخة محفوظة فورياً (بلا انتظار) ──────────────
+  // ونطلق تحديث فالخلفية (بمهلة طويلة) بلا ما نخلّي المستخدم ينتظرها
+  let cached = null;
+  try {
+    const snap = await pool.query('SELECT snapshot, last_seen FROM client_snapshots WHERE room_id = $1', [roomId]);
+    if (snap.rows[0]?.snapshot) cached = snap.rows[0].snapshot;
+  } catch (e) {}
+
+  scheduleBackgroundRefresh(room, roomId); // fire-and-forget، لا ننتظرها
+
+  if (cached) {
+    res.json(cached);
+    return;
+  }
+
+  // ما كاين حتى نسخة محفوظة (أول مرة) — هنا فقط ننتظر الحساب الحي
   const reqId = crypto.randomBytes(8).toString('hex');
   try {
-    const data = await posRequest(room, 'dashboard_full_request', reqId, 45000);
+    const data = await posRequest(room, 'dashboard_full_request', reqId, 90000);
+    await pool.query(
+      `UPDATE client_snapshots SET snapshot = $1, last_seen = NOW() WHERE room_id = $2`,
+      [JSON.stringify(data), roomId]
+    ).catch(() => {});
     res.json(data);
   } catch (e) {
-    res.status(504).json({ error: e.message === 'timeout' ? 'انتهى وقت الانتظار' : e.message });
+    res.status(504).json({ error: e.message === 'timeout' ? 'انتهى وقت الانتظار — أول تحميل قد يطول، أعد المحاولة بعد قليل' : e.message });
   }
 });
+
+// ── يطلب نسخة محدّثة فالخلفية بلا حجب أي طلب HTTP، بمهلة معقولة (Rate-limited) ──
+function scheduleBackgroundRefresh(room, roomId) {
+  const now = Date.now();
+  if (room._bgRefreshInFlight) return;                    // كاين طلب شغّال بالفعل
+  if (room._lastBgRefreshAt && now - room._lastBgRefreshAt < 60000) return; // لا تعيد قبل 60 ثانية
+  room._bgRefreshInFlight = true;
+  room._lastBgRefreshAt = now;
+  const reqId = 'bg_' + crypto.randomBytes(6).toString('hex');
+  posRequest(room, 'dashboard_full_request', reqId, 120000)
+    .then(data => {
+      return pool.query(
+        `UPDATE client_snapshots SET snapshot = $1, last_seen = NOW() WHERE room_id = $2`,
+        [JSON.stringify(data), roomId]
+      );
+    })
+    .catch(e => console.error('[bg-refresh]', roomId, e.message))
+    .finally(() => { room._bgRefreshInFlight = false; });
+}
 
 // ── جسر تشغيل نقطة البيع عن بُعد (الهاتف السحابي) — يمرّر طلب REST إلى الحاسوب عبر الغرفة
 app.post('/api/relay/:roomId', rateLimit(120), async (req, res) => {
@@ -608,7 +649,7 @@ wss.on('connection', (ws, req) => {
     const autoReqId = 'auto_' + crypto.randomBytes(6).toString('hex');
     setTimeout(() => {
       if (ws.readyState !== 1) return;
-      const timer = setTimeout(() => room.pendingReqs.delete(autoReqId), 15000);
+      const timer = setTimeout(() => room.pendingReqs.delete(autoReqId), 120000);
       room.pendingReqs.set(autoReqId, {
         timer,
         resolve: async (data) => {
@@ -696,7 +737,7 @@ app.get('/api/pos-poll/:roomId', rateLimit(600), async (req, res) => {
   if (!room._autoSnapshotDone) {
     room._autoSnapshotDone = true;
     const autoReqId = 'auto_' + crypto.randomBytes(6).toString('hex');
-    const timer = setTimeout(() => room.pendingReqs.delete(autoReqId), 45000);
+    const timer = setTimeout(() => room.pendingReqs.delete(autoReqId), 120000);
     room.pendingReqs.set(autoReqId, {
       timer,
       resolve: async (data) => {
