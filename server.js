@@ -447,7 +447,7 @@ app.get('/api/admin/client-live/:key', rateLimit(30), async (req, res) => {
   }
   const reqId = crypto.randomBytes(8).toString('hex');
   try {
-    const data = await posRequest(room, 'dashboard_full_request', reqId, 14000);
+    const data = await posRequest(room, 'dashboard_full_request', reqId, 45000);
     await pool.query(
       `INSERT INTO client_snapshots (license_key, last_seen, is_online, room_id, snapshot)
        VALUES ($1, NOW(), TRUE, $2, $3)
@@ -552,7 +552,7 @@ app.get('/api/dashboard-full/:roomId', async (req, res) => {
     return res.status(401).json({ error: 'توكن غير صالح' });
   const reqId = crypto.randomBytes(8).toString('hex');
   try {
-    const data = await posRequest(room, 'dashboard_full_request', reqId, 14000);
+    const data = await posRequest(room, 'dashboard_full_request', reqId, 45000);
     res.json(data);
   } catch (e) {
     res.status(504).json({ error: e.message === 'timeout' ? 'انتهى وقت الانتظار' : e.message });
@@ -696,7 +696,7 @@ app.get('/api/pos-poll/:roomId', rateLimit(600), async (req, res) => {
   if (!room._autoSnapshotDone) {
     room._autoSnapshotDone = true;
     const autoReqId = 'auto_' + crypto.randomBytes(6).toString('hex');
-    const timer = setTimeout(() => room.pendingReqs.delete(autoReqId), 15000);
+    const timer = setTimeout(() => room.pendingReqs.delete(autoReqId), 45000);
     room.pendingReqs.set(autoReqId, {
       timer,
       resolve: async (data) => {
