@@ -763,7 +763,10 @@ async function loadRooms() {
         <td>${r.pos_connected ? '🟢 متصل' : '🔴 غير متصل'}</td>
         <td>${escHtml(timeAgo(r.last_seen))}</td>
         <td>${r.phones_connected}</td>
-        <td><button class="copy-btn" onclick="copyRoomToken('${escHtml(r.token || '')}')">📋 نسخ Token</button></td>
+        <td style="display:flex;gap:6px">
+          <button class="copy-btn" style="background:#0f766e" onclick="openRoomDashboard('${escHtml(r.room_id)}','${escHtml(r.token || '')}')">👁️ عرض</button>
+          <button class="copy-btn" onclick="copyRoomToken('${escHtml(r.token || '')}')">📋 نسخ Token</button>
+        </td>
       </tr>
     `).join('');
   } catch (e) {
@@ -775,6 +778,14 @@ function copyRoomToken(token) {
   if (!token) { showToast('لا يوجد token متوفر الآن لهذه الغرفة (الجهاز غير متصل حاليًا)', 'error'); return; }
   navigator.clipboard.writeText(token);
   showToast('تم نسخ الـ Token ✓');
+}
+
+function openRoomDashboard(roomId, token) {
+  if (!token) {
+    showToast('لا يوجد token محفوظ لهذه الغرفة بعد — خاص الجهاز يتصل مرة واحدة أولاً', 'error');
+    return;
+  }
+  window.open(`${API}/dashboard/${encodeURIComponent(roomId)}#t=${encodeURIComponent(token)}`, '_blank');
 }
 
 // ── إحصائيات ──────────────────────────────
