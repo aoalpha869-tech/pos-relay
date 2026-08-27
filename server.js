@@ -494,6 +494,15 @@ function getRoom(id) {
 
 const POLL_ALIVE_MS = 40000; // إذا ما توصلش طلب poll جديد خلال هاذ المدة، نعتبروه منقطع (أطول من مدة الـ long-poll: 25 ثانية + هامش أمان)
 
+// ── تحديث الكاش تلقائياً لكل الغرف المتصلة حالياً، بلا انتظار فتح الـ dashboard ──
+// (fire-and-forget، محدود بـ 60 ثانية بين كل تحديث وتحديث لكل غرفة — راجع scheduleBackgroundRefresh)
+const AUTO_REFRESH_INTERVAL = 3 * 60 * 1000; // كل 3 دقائق
+setInterval(() => {
+  for (const [roomId, room] of rooms.entries()) {
+    if (posConnected(room)) scheduleBackgroundRefresh(room, roomId);
+  }
+}, AUTO_REFRESH_INTERVAL);
+
 /** واش الـ POS متصل الآن، سواء عبر WebSocket أو عبر Long-Polling */
 function posConnected(room) {
   if (room.pos && room.pos.readyState === 1) return true;
