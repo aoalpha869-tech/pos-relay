@@ -90,9 +90,13 @@ async function initDB() {
       last_seen     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       is_online     BOOLEAN NOT NULL DEFAULT FALSE,
       room_id       TEXT DEFAULT NULL,
+      token         TEXT DEFAULT NULL,
       snapshot      JSONB DEFAULT NULL
     )
   `);
+  await pool.query(`
+    ALTER TABLE client_snapshots ADD COLUMN IF NOT EXISTS token TEXT DEFAULT NULL
+  `).catch(() => {});
   console.log('[DB] جداول قاعدة البيانات جاهزة');
 }
 initDB().catch(err => console.error('[DB] فشل إنشاء الجداول:', err.message));
@@ -290,6 +294,58 @@ app.post('/api/admin/create', rateLimit(30), requireAdmin, async (req, res) => {
   }
 });
 
+app.get('/api/admin/rooms', rateLimit(30), requireAdmin, async (req, res) => {
+  try {
+    // السجل الدائم: كل غرفة سجّلت روحها مرة، حتى لو غير متصلة حاليًا
+    const result = await pool.query(`
+      SELECT cs.room_id, cs.is_online AS db_online, cs.last_seen, cs.token AS db_token,
+             l.key AS license_key, l.note
+      FROM client_snapshots cs
+      LEFT JOIN licenses l ON l.key = cs.license_key
+      WHERE cs.room_id IS NOT NULL
+      ORDER BY cs.last_seen DESC
+    `);
+
+    const list = result.rows.map(row => {
+      const live = rooms.get(row.room_id); // الحالة الحية إذا كانت متوفرة فالذاكرة الآن
+      const posLive = !!(live && posConnected(live));
+      return {
+        room_id: row.room_id,
+        // نفضّل التوكن الحي، وإلا نرجع لآخر توكن محفوظ فالقاعدة
+        token: (live ? live.token : null) || row.db_token || null,
+        license_key: row.license_key,
+        note: row.note || '',
+        // نعتمد الحالة الحية إذا كان السيرفر عارفها الآن، وإلا نرجع لآخر حالة مسجلة فالقاعدة
+        pos_connected: live ? posLive : !!row.db_online,
+        phones_connected: live ? live.phones.filter(p => p.readyState === 1).length : 0,
+        pending_requests: live ? live.pendingReqs.size : 0,
+        last_seen: row.last_seen,
+      };
+    });
+
+    // أضف أي غرفة حية فالذاكرة الآن وماكانتش بعد فالقاعدة (نادر، لكن للاحتياط)
+    for (const [id, r] of rooms.entries()) {
+      if (!list.find(x => x.room_id === id)) {
+        list.push({
+          room_id: id,
+          token: r.token,
+          license_key: null,
+          note: '',
+          pos_connected: posConnected(r),
+          phones_connected: r.phones.filter(p => p.readyState === 1).length,
+          pending_requests: r.pendingReqs.size,
+          last_seen: null,
+        });
+      }
+    }
+
+    res.json({ ok: true, count: list.length, rooms: list });
+  } catch (err) {
+    console.error('[admin/rooms]', err.message);
+    res.status(500).json({ ok: false, error: 'فشل جلب قائمة الغرف' });
+  }
+});
+
 app.post('/api/admin/list', rateLimit(30), requireAdmin, async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM licenses ORDER BY created_at DESC');
@@ -385,7 +441,7 @@ app.get('/api/admin/client-live/:key', rateLimit(30), async (req, res) => {
   if (!row || !row.room_id || !row.is_online)
     return res.status(503).json({ error: 'الجهاز غير متصل حالياً', offline: true });
   const room = getRoom(row.room_id);
-  if (!room.pos || room.pos.readyState !== 1) {
+  if (!posConnected(room)) {
     await pool.query('UPDATE client_snapshots SET is_online = FALSE WHERE license_key = $1', [key]).catch(() => {});
     return res.status(503).json({ error: 'الجهاز غير متصل حالياً', offline: true });
   }
@@ -429,15 +485,40 @@ app.get('/',       (_, res) => sendFile(res, 'download.html'));
 const rooms = new Map();
 function getRoom(id) {
   if (!rooms.has(id))
-    rooms.set(id, { pos: null, phones: [], pendingReqs: new Map(), token: null });
+    rooms.set(id, {
+      pos: null, phones: [], pendingReqs: new Map(), token: null,
+      pollQueue: [], pollWaiters: [], lastPollAt: 0, // ── وضع الـ HTTP Long-Polling (POS بدون WebSocket)
+    });
   return rooms.get(id);
+}
+
+const POLL_ALIVE_MS = 40000; // إذا ما توصلش طلب poll جديد خلال هاذ المدة، نعتبروه منقطع (أطول من مدة الـ long-poll: 25 ثانية + هامش أمان)
+
+/** واش الـ POS متصل الآن، سواء عبر WebSocket أو عبر Long-Polling */
+function posConnected(room) {
+  if (room.pos && room.pos.readyState === 1) return true;
+  return (Date.now() - room.lastPollAt) < POLL_ALIVE_MS;
+}
+
+/** يرسل رسالة للـ POS: مباشرة عبر WebSocket إذا كان متصل بيه، وإلا يحطها فطابور الـ polling */
+function sendToPos(room, obj) {
+  if (room.pos && room.pos.readyState === 1) {
+    room.pos.send(JSON.stringify(obj));
+    return;
+  }
+  room.pollQueue.push(obj);
+  if (room.pollWaiters.length) {
+    const waiter = room.pollWaiters.shift();
+    const msgs = room.pollQueue.splice(0, room.pollQueue.length);
+    waiter(msgs);
+  }
 }
 
 async function posRequest(room, type, reqId, timeout = 12000) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => { room.pendingReqs.delete(reqId); reject(new Error('timeout')); }, timeout);
     room.pendingReqs.set(reqId, { resolve, reject, timer });
-    room.pos.send(JSON.stringify({ type, reqId }));
+    sendToPos(room, { type, reqId });
   });
 }
 
@@ -450,7 +531,7 @@ function checkDashToken(room, token) {
 
 app.get('/api/dashboard/:roomId', async (req, res) => {
   const room = getRoom(req.params.roomId);
-  if (!room.pos || room.pos.readyState !== 1)
+  if (!posConnected(room))
     return res.status(503).json({ error: 'POS غير متصل حالياً' });
   if (!checkDashToken(room, req.query.token))
     return res.status(401).json({ error: 'توكن غير صالح' });
@@ -465,7 +546,7 @@ app.get('/api/dashboard/:roomId', async (req, res) => {
 
 app.get('/api/dashboard-full/:roomId', async (req, res) => {
   const room = getRoom(req.params.roomId);
-  if (!room.pos || room.pos.readyState !== 1)
+  if (!posConnected(room))
     return res.status(503).json({ error: 'POS غير متصل حالياً' });
   if (!checkDashToken(room, req.query.token))
     return res.status(401).json({ error: 'توكن غير صالح' });
@@ -481,7 +562,7 @@ app.get('/api/dashboard-full/:roomId', async (req, res) => {
 // ── جسر تشغيل نقطة البيع عن بُعد (الهاتف السحابي) — يمرّر طلب REST إلى الحاسوب عبر الغرفة
 app.post('/api/relay/:roomId', rateLimit(120), async (req, res) => {
   const room = getRoom(req.params.roomId);
-  if (!room.pos || room.pos.readyState !== 1)
+  if (!posConnected(room))
     return res.status(503).json({ error: 'POS غير متصل حالياً' });
   const token = req.query.token || req.headers['x-dash-token'];
   if (!checkDashToken(room, token))
@@ -493,7 +574,7 @@ app.post('/api/relay/:roomId', rateLimit(120), async (req, res) => {
     const result = await new Promise((resolve, reject) => {
       const timer = setTimeout(() => { room.pendingReqs.delete(reqId); reject(new Error('timeout')); }, 15000);
       room.pendingReqs.set(reqId, { resolve, reject, timer });
-      room.pos.send(JSON.stringify({ type: 'api_request', reqId, method: method || 'GET', path, body: body || '' }));
+      sendToPos(room, { type: 'api_request', reqId, method: method || 'GET', path, body: body || '' });
     });
     const status = (result && result.status) || 200;
     res.status(status).type('application/json').send((result && result.body) || '{}');
@@ -521,7 +602,7 @@ wss.on('connection', (ws, req) => {
     console.log(`[POS] connected room=${roomId}`);
     ws.send(JSON.stringify({ type: 'status', msg: 'connected' }));
     pool.query(
-      `UPDATE client_snapshots SET is_online = TRUE, last_seen = NOW() WHERE room_id = $1`, [roomId]
+      `UPDATE client_snapshots SET is_online = TRUE, last_seen = NOW(), token = $2 WHERE room_id = $1`, [roomId, token]
     ).catch(() => {});
 
     const autoReqId = 'auto_' + crypto.randomBytes(6).toString('hex');
@@ -574,8 +655,7 @@ wss.on('connection', (ws, req) => {
   } else if (role === 'phone') {
     room.phones.push(ws);
     console.log(`[Phone] connected room=${roomId} total=${room.phones.length}`);
-    if (room.pos?.readyState === 1)
-      room.pos.send(JSON.stringify({ type: 'phone_connected', count: room.phones.length }));
+    sendToPos(room, { type: 'phone_connected', count: room.phones.length });
     ws.on('message', raw => {
       const txt = raw.toString().trim();
       if (!txt) return;
@@ -583,15 +663,90 @@ wss.on('connection', (ws, req) => {
         const msg = JSON.parse(txt);
         if (msg.type === 'ping') { ws.send(JSON.stringify({ type: 'pong' })); return; }
       } catch (e) {}
-      if (room.pos?.readyState === 1)
-        room.pos.send(JSON.stringify({ type: 'barcode', value: txt }));
+      sendToPos(room, { type: 'barcode', value: txt });
     });
     ws.on('close', () => {
       room.phones = room.phones.filter(p => p !== ws);
-      if (room.pos?.readyState === 1)
-        room.pos.send(JSON.stringify({ type: 'phone_disconnected', count: room.phones.length }));
+      sendToPos(room, { type: 'phone_disconnected', count: room.phones.length });
     });
   }
+});
+
+// ═════════════════════════════════════════════
+//  POS عبر HTTP Long-Polling — بديل مستقر عن WebSocket
+//  (يستعملها تطبيق Vendix الحالي بدل الاتصال المباشر بالـ WS)
+// ═════════════════════════════════════════════
+app.get('/api/pos-poll/:roomId', rateLimit(600), async (req, res) => {
+  const roomId = req.params.roomId;
+  const token  = req.query.token;
+  if (!token || token.length < 16) return res.status(400).json({ error: 'token مطلوب' });
+
+  const room = getRoom(roomId);
+  // أول طلب poll من هاذ الجهاز هو من يحدّد سر الغرفة (كيفما فـ WebSocket)
+  if (!room.token) room.token = token;
+  else if (!safeEqual(token, room.token)) return res.status(401).json({ error: 'توكن غير صالح' });
+
+  room.lastPollAt = Date.now();
+  pool.query(
+    `UPDATE client_snapshots SET is_online = TRUE, last_seen = NOW(), token = $2 WHERE room_id = $1`,
+    [roomId, token]
+  ).catch(() => {});
+
+  // أول اتصال poll لهاذ الغرفة: نطلب لقطة كاملة للوحة المتابعة باش تتحفظ فالقاعدة (كيفما WS)
+  if (!room._autoSnapshotDone) {
+    room._autoSnapshotDone = true;
+    const autoReqId = 'auto_' + crypto.randomBytes(6).toString('hex');
+    const timer = setTimeout(() => room.pendingReqs.delete(autoReqId), 15000);
+    room.pendingReqs.set(autoReqId, {
+      timer,
+      resolve: async (data) => {
+        try {
+          await pool.query(
+            `UPDATE client_snapshots SET snapshot = $1, last_seen = NOW(), is_online = TRUE WHERE room_id = $2`,
+            [JSON.stringify(data), roomId]
+          );
+        } catch (e) { console.error('[snapshot] فشل حفظ البيانات:', e.message); }
+      },
+      reject: () => {}
+    });
+    room.pollQueue.push({ type: 'dashboard_full_request', reqId: autoReqId });
+  }
+
+  // لو كاين رسائل بالانتظار، رجّعها فوراً بلا ما نستنى
+  if (room.pollQueue.length) {
+    return res.json({ messages: room.pollQueue.splice(0, room.pollQueue.length) });
+  }
+
+  // وإلا، Long-poll: نستنى حتى 25 ثانية لأي رسالة جديدة قبل ما نرجّع قائمة فارغة
+  const messages = await new Promise(resolve => {
+    const timer = setTimeout(() => {
+      const idx = room.pollWaiters.indexOf(waiter);
+      if (idx !== -1) room.pollWaiters.splice(idx, 1);
+      resolve([]);
+    }, 25000);
+    const waiter = (msgs) => { clearTimeout(timer); resolve(msgs); };
+    room.pollWaiters.push(waiter);
+  });
+  res.json({ messages });
+});
+
+app.post('/api/pos-respond/:roomId', rateLimit(600), (req, res) => {
+  const roomId = req.params.roomId;
+  const room = getRoom(roomId);
+  const token = req.query.token;
+  if (!checkDashToken(room, token)) return res.status(401).json({ error: 'توكن غير صالح' });
+
+  room.lastPollAt = Date.now(); // أي رد يعتبر أيضاً دليل حياة
+  const { reqId, data } = req.body || {};
+  if (reqId) {
+    const pending = room.pendingReqs.get(reqId);
+    if (pending) {
+      clearTimeout(pending.timer);
+      room.pendingReqs.delete(reqId);
+      pending.resolve(data);
+    }
+  }
+  res.json({ ok: true });
 });
 
 const PORT = process.env.PORT || 3000;
