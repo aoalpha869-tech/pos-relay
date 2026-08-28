@@ -42,17 +42,14 @@ app.use(express.json());
 // ─────────────────────────────────────────────
 //  CORS — مقيّد عبر ALLOWED_ORIGINS إن وُجد
 // ─────────────────────────────────────────────
-const ALLOWED = (process.env.ALLOWED_ORIGINS || '')
-  .split(',').map(s => s.trim()).filter(Boolean);
-
+// ─────────────────────────────────────────────
+//  CORS — مفتوح بالكامل (التحقق الحقيقي يتم عبر التوكن فكل طلب، ماشي عبر الـ Origin،
+//  وتطبيق Vendix desktop يبعث Origin مختلف حسب الجهاز/الوضعية، فتقييده كان يسبب انقطاعات)
+// ─────────────────────────────────────────────
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (ALLOWED.length === 0) {
-    res.header('Access-Control-Allow-Origin', '*');
-  } else if (origin && ALLOWED.includes(origin)) {
-    res.header('Access-Control-Allow-Origin', origin);
-    res.header('Vary', 'Origin');
-  }
+  res.header('Access-Control-Allow-Origin', origin || '*');
+  res.header('Vary', 'Origin');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-admin-password');
   if (req.method === 'OPTIONS') return res.sendStatus(200);
@@ -493,15 +490,6 @@ function getRoom(id) {
 }
 
 const POLL_ALIVE_MS = 40000; // إذا ما توصلش طلب poll جديد خلال هاذ المدة، نعتبروه منقطع (أطول من مدة الـ long-poll: 25 ثانية + هامش أمان)
-
-// ── تحديث الكاش تلقائياً لكل الغرف المتصلة حالياً، بلا انتظار فتح الـ dashboard ──
-// (fire-and-forget، محدود بـ 60 ثانية بين كل تحديث وتحديث لكل غرفة — راجع scheduleBackgroundRefresh)
-const AUTO_REFRESH_INTERVAL = 3 * 60 * 1000; // كل 3 دقائق
-setInterval(() => {
-  for (const [roomId, room] of rooms.entries()) {
-    if (posConnected(room)) scheduleBackgroundRefresh(room, roomId);
-  }
-}, AUTO_REFRESH_INTERVAL);
 
 /** واش الـ POS متصل الآن، سواء عبر WebSocket أو عبر Long-Polling */
 function posConnected(room) {
