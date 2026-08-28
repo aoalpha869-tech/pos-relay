@@ -520,16 +520,19 @@ body {
   // إحصائيات فترة موحّدة (تُستعمل في الرئيسية والتقارير معاً) — مصدر واحد للحقيقة
   function computeStats(period) {
     const costMap = _productCostMap();
-    const filtered = filterByPeriod(_data?.sales, period).filter(s => !s.isInitialDebt);
+    // كل فواتير الفترة (شاملة الديون المبدئية) — تُستعمل فقط لحساب الدين، مطابقةً للتطبيق
+    const periodAll = filterByPeriod(_data?.sales, period);
+    // فواتير المبيعات الحقيقية فقط (بدون الديون المبدئية) — للمبيعات/الربح/المرتجعات
+    const filtered = periodAll.filter(s => !s.isInitialDebt);
     const revenue = filtered.reduce((s, x) => s + (x.total || 0), 0);
     const paid    = filtered.reduce((s, x) => s + (x.paid || 0), 0);
     const returns = filtered.reduce((s, x) => s + (x.returnedTotal || 0), 0);
     const profit  = filtered.reduce((s, x) => s + (saleProfitJs(x, costMap) || 0), 0);
     // الدين: لفترة "الكل" نستعمل رصيد الزبائن التراكمي الفعلي (نفس صفحة الديون)،
-    // ولباقي الفترات نحسب الدين الجديد المتولّد من فواتير تلك الفترة فقط
+    // ولباقي الفترات نحسب دين كل فواتير الفترة شاملة الديون المبدئية (نفس منطق التطبيق تماماً)
     const debt = period === 'all'
       ? (_data?.customers || []).reduce((s, c) => s + Math.max(0, c.debt || 0), 0)
-      : filtered.reduce((s, x) => s + Math.max(0, (x.total || 0) - (x.paid || 0)), 0);
+      : periodAll.reduce((s, x) => s + Math.max(0, (x.total || 0) - (x.paid || 0)), 0);
     return { filtered, revenue, paid, returns, profit, debt, count: filtered.length };
   }
 
@@ -886,7 +889,7 @@ body {
     const C = cur();
     const allPurchases = d.purchases || [];
     const stats = computeStats(_reportPeriod);
-    const { filtered, revenue, paid, debt, returns, count } = stats;
+    const { filtered, revenue, paid, debt, returns, profit, count } = stats;
 
     // top products
     const productSales = {};
@@ -911,6 +914,7 @@ body {
       <div class="card" style="margin-bottom:12px">
         <div class="card-header"><h3>ملخص ${periodLabel}</h3><span class="badge badge-blue">${count} فاتورة</span></div>
         <div class="summary-row"><span class="s-key">إجمالي المبيعات</span><span class="s-v" style="color:var(--success)">${fmt(revenue)} ${C}</span></div>
+        <div class="summary-row"><span class="s-key">الربح</span><span class="s-v" style="color:#1565c0">${fmt(profit)} ${C}</span></div>
         <div class="summary-row"><span class="s-key">المبالغ المقبوضة</span><span class="s-v" style="color:var(--accent)">${fmt(paid)} ${C}</span></div>
         <div class="summary-row"><span class="s-key">الديون المتراكمة</span><span class="s-v" style="color:var(--danger)">${fmt(debt)} ${C}</span></div>
         <div class="summary-row"><span class="s-key">المرتجعات</span><span class="s-v" style="color:var(--warn)">${fmt(returns)} ${C}</span></div>
