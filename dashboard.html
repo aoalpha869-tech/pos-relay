@@ -464,8 +464,73 @@ body {
     return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
   }
   function thisMonth() { return today().slice(0,7); }
+  // بداية الأسبوع = السبت (نفس منطق التطبيق: reports.js -> (getDay()+1)%7)
   function startOfWeek() {
-    const d = new Date(); d.setDate(d.getDate() - d.getDay()); d.setHours(0,0,0,0); return d;
+    const d = new Date(); d.setDate(d.getDate() - ((d.getDay() + 1) % 7)); d.setHours(0,0,0,0); return d;
+  }
+  // يحوّل تاريخ ISO (UTC) إلى تاريخ محلي "YYYY-MM-DD" بدل مقارنة السلسلة الخام —
+  // يمنع تصنيف فواتير قريبة من منتصف الليل ليوم خاطئ
+  function localDateStr(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return String(iso).slice(0, 10);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  // فلترة أي قائمة (مبيعات/مشتريات) حسب الفترة، بنفس تعريف الفترات المستعملة في التطبيق
+  function filterByPeriod(list, period, dateField) {
+    dateField = dateField || 'date';
+    const t = today(), m = thisMonth(), sw = startOfWeek();
+    return (list || []).filter(x => {
+      const raw = x[dateField];
+      if (!raw) return false;
+      if (period === 'today') return localDateStr(raw) === t;
+      if (period === 'week')  return new Date(raw) >= sw;
+      if (period === 'month') return localDateStr(raw).slice(0, 7) === m;
+      return true; // all
+    });
+  }
+  // خريطة اسم المنتج -> سعر التكلفة (لحساب الربح)
+  function _productCostMap() {
+    const map = {};
+    (_data?.products || []).forEach(p => { map[p.name] = p.costPrice || 0; });
+    return map;
+  }
+  // نفس منطق saleProfit في reports.js بالتطبيق — تُستثنى فقط تعديلات تكلفة المرتجعات
+  // (returnedCost) لأن هذا الحقل غير مُرسل حالياً من التطبيق إلى الـrelay؛ الفرق
+  // الناتج ضئيل عملياً لأن نسبة فواتير المرتجعات قليلة جداً مقارنة بإجمالي الفواتير.
+  function saleProfitJs(sale, costMap) {
+    if (sale.isInitialDebt) return null;
+    let totalCost = 0, manualOnlyTotal = 0, hasAllCosts = true;
+    (sale.items || []).forEach(item => {
+      if (item.isManual && !item.isManualProduct) return;
+      if (item.lineCost && item.lineCost > 0) {
+        totalCost += item.lineCost;
+      } else if (item.isManualProduct) {
+        const lineVal = item.lineTotal !== undefined ? item.lineTotal : (item.price || 0) * (item.qty || 1);
+        manualOnlyTotal += lineVal;
+      } else if (!item.isManual) {
+        const cp = costMap[item.name];
+        if (cp && cp > 0) { totalCost += cp * (item.qty || 1); } else { hasAllCosts = false; }
+      }
+    });
+    if (!hasAllCosts && totalCost === 0) return null;
+    const saleBase = (sale.total || 0) - manualOnlyTotal;
+    return saleBase - totalCost;
+  }
+  // إحصائيات فترة موحّدة (تُستعمل في الرئيسية والتقارير معاً) — مصدر واحد للحقيقة
+  function computeStats(period) {
+    const costMap = _productCostMap();
+    const filtered = filterByPeriod(_data?.sales, period).filter(s => !s.isInitialDebt);
+    const revenue = filtered.reduce((s, x) => s + (x.total || 0), 0);
+    const paid    = filtered.reduce((s, x) => s + (x.paid || 0), 0);
+    const returns = filtered.reduce((s, x) => s + (x.returnedTotal || 0), 0);
+    const profit  = filtered.reduce((s, x) => s + (saleProfitJs(x, costMap) || 0), 0);
+    // الدين: لفترة "الكل" نستعمل رصيد الزبائن التراكمي الفعلي (نفس صفحة الديون)،
+    // ولباقي الفترات نحسب الدين الجديد المتولّد من فواتير تلك الفترة فقط
+    const debt = period === 'all'
+      ? (_data?.customers || []).reduce((s, c) => s + Math.max(0, c.debt || 0), 0)
+      : filtered.reduce((s, x) => s + Math.max(0, (x.total || 0) - (x.paid || 0)), 0);
+    return { filtered, revenue, paid, returns, profit, debt, count: filtered.length };
   }
 
   // ── navigation ───────────────────────────────────────────────────────────
@@ -606,11 +671,13 @@ body {
   function renderHome() {
     const d = _data;
     const C = cur();
-    const revD = d.today_revenue || 0;
-    const proD = d.today_profit  || 0;
-    const revM = d.month_revenue || 0;
-    const proM = d.month_profit  || 0;
-    const sales = d.today_sales_count || 0;
+    const statsD = computeStats('today');
+    const statsM = computeStats('month');
+    const revD = statsD.revenue;
+    const proD = statsD.profit;
+    const revM = statsM.revenue;
+    const proM = statsM.profit;
+    const sales = statsD.count;
     const marginD = revD > 0 ? ((proD/revD)*100).toFixed(1) : '0.0';
     const marginM = revM > 0 ? ((proM/revM)*100).toFixed(1) : '0.0';
     const dayNum  = new Date().getDate();
@@ -739,9 +806,9 @@ body {
     const purchases = d.purchases || [];
 
     // revenue collected (paid amounts from sales today)
-    const tdSales = sales.filter(s => s.date && s.date.startsWith(today()));
+    const tdSales = filterByPeriod(sales, 'today');
     const tdRevenue = tdSales.reduce((s,x) => s + (x.paid||0), 0);
-    const tdPurchases = purchases.filter(p => p.date && p.date.startsWith(today()))
+    const tdPurchases = filterByPeriod(purchases, 'today')
                                  .reduce((s,p) => s + (p.paid||0), 0);
     const totalDebt = (d.customers||[]).reduce((s,c) => s + Math.max(0, c.debt||0), 0);
 
@@ -750,7 +817,7 @@ body {
     try { cashHistory = JSON.parse(d.cash_history || '[]'); } catch(e) {}
 
     // صافي اليوم = صافي التغير في الخزنة اليوم (من سجل حركات الخزنة الفعلي)
-    const todayEntries = cashHistory.filter(h => (h.datetime || h.date || '').slice(0,10) === today());
+    const todayEntries = cashHistory.filter(h => localDateStr(h.datetime || h.date) === today());
     const netToday = todayEntries.reduce((s,h) => {
       const amt = h.amount || 0;
       const isOut = (h.type === 'purchase' || h.type === 'withdraw' || h.type === 'refund');
@@ -814,30 +881,12 @@ body {
     if (_data) renderReports();
   };
 
-  function filterSalesByPeriod(sales) {
-    const t = today(), m = thisMonth(), sw = startOfWeek();
-    return sales.filter(s => {
-      if (!s.date) return false;
-      const d = new Date(s.date);
-      if (_reportPeriod === 'today') return s.date.startsWith(t);
-      if (_reportPeriod === 'week')  return d >= sw;
-      if (_reportPeriod === 'month') return s.date.startsWith(m);
-      return true;
-    });
-  }
-
   function renderReports() {
     const d = _data;
     const C = cur();
-    const allSales = d.sales || [];
     const allPurchases = d.purchases || [];
-    const filtered = filterSalesByPeriod(allSales).filter(s => !s.isInitialDebt);
-
-    const revenue = filtered.reduce((s,x) => s + (x.total||0), 0);
-    const paid    = filtered.reduce((s,x) => s + (x.paid||0), 0);
-    const debt    = filtered.reduce((s,x) => s + Math.max(0, (x.total||0)-(x.paid||0)), 0);
-    const returns = filtered.reduce((s,x) => s + (x.returnedTotal||0), 0);
-    const count   = filtered.length;
+    const stats = computeStats(_reportPeriod);
+    const { filtered, revenue, paid, debt, returns, count } = stats;
 
     // top products
     const productSales = {};
@@ -852,16 +901,8 @@ body {
     const topProducts = Object.entries(productSales)
       .sort((a,b) => b[1].rev - a[1].rev).slice(0, 5);
 
-    // filter purchases too
-    const sw = startOfWeek(), t = today(), m = thisMonth();
-    const filtPurch = allPurchases.filter(p => {
-      if (!p.date) return false;
-      const d = new Date(p.date);
-      if (_reportPeriod === 'today') return p.date.startsWith(t);
-      if (_reportPeriod === 'week')  return d >= sw;
-      if (_reportPeriod === 'month') return p.date.startsWith(m);
-      return true;
-    });
+    // filter purchases too (بنفس تعريف الفترات الموحّد)
+    const filtPurch = filterByPeriod(allPurchases, _reportPeriod);
     const purchTotal = filtPurch.reduce((s,p) => s + (p.total||0), 0);
 
     const periodLabel = { today:'اليوم', week:'هذا الأسبوع', month:'هذا الشهر', all:'كل الوقت' }[_reportPeriod];
