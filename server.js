@@ -52,8 +52,49 @@ app.use((req, res, next) => {
   next();
 });
 
-// حد أقصى أكبر لحجم الـ JSON (كاتالوغات كبيرة: آلاف المنتجات/المبيعات فطلب واحد)
-app.use(express.json({ limit: '50mb' }));
+// حد أقصى أكبر لحجم الـ JSON (كاتالوغات كبيرة: آلاف المنتجات/المبيعات فطلب واحد،
+// وأحياناً تتجاوز 100 ميغا بسبب صور المنتجات المُخزَّنة base64 — انظر stripHeavyImages تحت)
+app.use(express.json({ limit: '250mb' }));
+
+// ─────────────────────────────────────────────
+//  تنظيف الصور الثقيلة (base64) من بيانات POS الضخمة
+//  قبل تخزينها فـ Postgres أو تمريرها للهاتف/اللوحة —
+//  الصور غير ضرورية لا للوحة المتابعة ولا لعمليات البيع عن بُعد،
+//  وهي المسؤولة عادة عن أغلب حجم البيانات (عشرات/مئات الميغا لآلاف المنتجات)
+// ─────────────────────────────────────────────
+function stripHeavyImages(node, depth) {
+  depth = depth || 0;
+  if (depth > 12 || node == null) return node;
+  if (typeof node === 'string') {
+    // أي سلسلة base64 لصورة أطول من 500 حرف تُحذف (تُستبدل بـ null)
+    if (node.length > 500 && node.slice(0, 11) === 'data:image/') return null;
+    return node;
+  }
+  if (Array.isArray(node)) {
+    for (let i = 0; i < node.length; i++) node[i] = stripHeavyImages(node[i], depth + 1);
+    return node;
+  }
+  if (typeof node === 'object') {
+    for (const k in node) node[k] = stripHeavyImages(node[k], depth + 1);
+    return node;
+  }
+  return node;
+}
+
+// يطبّق التنظيف على بيانات POS الواردة، سواء كانت كائن مباشر (لقطة اللوحة)
+// أو نص JSON مُغلَّف داخل {status, body} (رد api_request لتطبيق الهاتف)
+function sanitizePosData(data) {
+  try {
+    if (data && typeof data.body === 'string') {
+      const parsed = JSON.parse(data.body);
+      data.body = JSON.stringify(stripHeavyImages(parsed));
+      return data;
+    }
+    return stripHeavyImages(data);
+  } catch (e) {
+    return data; // إن فشل التحليل (بيانات غير JSON)، مرّرها كما هي بدل ما نكسر التدفق
+  }
+}
 
 // ─────────────────────────────────────────────
 //  قاعدة البيانات PostgreSQL
@@ -609,7 +650,9 @@ app.post('/api/relay/:roomId', rateLimit(120), async (req, res) => {
   const reqId = crypto.randomBytes(8).toString('hex');
   try {
     const result = await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { room.pendingReqs.delete(reqId); reject(new Error('timeout')); }, 15000);
+      // مهلة أطول (120 ثانية) لتحمّل نقل بيانات ضخمة (كاتالوغ كبير) عبر اتصال
+      // إنترنت عادي بين الحاسوب والـrelay، بدل 15 ثانية غير كافية لأي حجم كبير
+      const timer = setTimeout(() => { room.pendingReqs.delete(reqId); reject(new Error('timeout')); }, 120000);
       room.pendingReqs.set(reqId, { resolve, reject, timer });
       sendToPos(room, { type: 'api_request', reqId, method: method || 'GET', path, body: body || '' });
     });
@@ -775,12 +818,13 @@ app.post('/api/pos-respond/:roomId', rateLimit(600), (req, res) => {
 
   room.lastPollAt = Date.now(); // أي رد يعتبر أيضاً دليل حياة
   const { reqId, data } = req.body || {};
+  const cleanData = sanitizePosData(data); // احذف الصور الثقيلة قبل أي تخزين أو تمرير
   if (reqId) {
     const pending = room.pendingReqs.get(reqId);
     if (pending) {
       clearTimeout(pending.timer);
       room.pendingReqs.delete(reqId);
-      pending.resolve(data);
+      pending.resolve(cleanData);
     }
   }
   res.json({ ok: true });
