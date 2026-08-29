@@ -762,9 +762,17 @@ app.get('/api/pos-poll/:roomId', rateLimit(600), async (req, res) => {
   if (!token || token.length < 16) return res.status(400).json({ error: 'token مطلوب' });
 
   const room = getRoom(roomId);
-  // أول طلب poll من هاذ الجهاز هو من يحدّد سر الغرفة (كيفما فـ WebSocket)
-  if (!room.token) room.token = token;
-  else if (!safeEqual(token, room.token)) return res.status(401).json({ error: 'توكن غير صالح' });
+  // أول طلب poll من هاذ الجهاز هو من يحدّد سر الغرفة (كيفما فـ WebSocket).
+  // لو الغرفة خاملة (بلا poll ناجح من مدة POLL_ALIVE_MS) نعتبر الجهاز القديم
+  // منقطعاً ونتبنّى التوكن الجديد تلقائياً — هذا يحل مشكلة توكن قديم عالق
+  // في الذاكرة (مثلاً من جلسة "npx tauri dev" سابقة) يمنع النسخة المبنية
+  // (exe) من الاتصال بنفس الغرفة لاحقاً.
+  const roomIdle = (Date.now() - room.lastPollAt) >= POLL_ALIVE_MS;
+  if (!room.token || roomIdle) {
+    room.token = token;
+  } else if (!safeEqual(token, room.token)) {
+    return res.status(401).json({ error: 'توكن غير صالح' });
+  }
 
   room.lastPollAt = Date.now();
   pool.query(
