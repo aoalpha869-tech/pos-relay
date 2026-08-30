@@ -495,9 +495,8 @@ body {
     (_data?.products || []).forEach(p => { map[p.name] = p.costPrice || 0; });
     return map;
   }
-  // نفس منطق saleProfit في reports.js بالتطبيق — تُستثنى فقط تعديلات تكلفة المرتجعات
-  // (returnedCost) لأن هذا الحقل غير مُرسل حالياً من التطبيق إلى الـrelay؛ الفرق
-  // الناتج ضئيل عملياً لأن نسبة فواتير المرتجعات قليلة جداً مقارنة بإجمالي الفواتير.
+  // نفس منطق saleProfit في reports.js بالتطبيق تماماً — الآن returnedCost
+  // الحقيقي مُرسَل من التطبيق (حقل sale.returnedCost) فلا حاجة لأي تقدير.
   function saleProfitJs(sale, costMap) {
     if (sale.isInitialDebt) return null;
     let totalCost = 0, manualOnlyTotal = 0, hasAllCosts = true;
@@ -515,7 +514,17 @@ body {
     });
     if (!hasAllCosts && totalCost === 0) return null;
     const saleBase = (sale.total || 0) - manualOnlyTotal;
-    return saleBase - totalCost;
+    const netCost = Math.max(0, totalCost - (sale.returnedCost || 0));
+    return saleBase - netCost;
+  }
+  // خسائر المخزون والمصاريف للفترة — نفس فلترة reports.js بالتطبيق (via filterByPeriod)
+  function _periodLossValue(period) {
+    return filterByPeriod(_data?.stockLosses, period)
+      .reduce((s, l) => s + (l.totalLoss || 0), 0);
+  }
+  function _periodExpensesValue(period) {
+    return filterByPeriod(_data?.expenses, period)
+      .reduce((s, e) => s + (e.amount || 0), 0);
   }
   // إحصائيات فترة موحّدة (تُستعمل في الرئيسية والتقارير معاً) — مصدر واحد للحقيقة
   function computeStats(period) {
@@ -527,13 +536,17 @@ body {
     const revenue = filtered.reduce((s, x) => s + (x.total || 0), 0);
     const paid    = filtered.reduce((s, x) => s + (x.paid || 0), 0);
     const returns = filtered.reduce((s, x) => s + (x.returnedTotal || 0), 0);
-    const profit  = filtered.reduce((s, x) => s + (saleProfitJs(x, costMap) || 0), 0);
+    const grossProfit  = filtered.reduce((s, x) => s + (saleProfitJs(x, costMap) || 0), 0);
+    // خسائر المخزون والمصاريف للفترة — نفس منطق netProfitAfterExp بالتطبيق
+    const lossValue     = _periodLossValue(period);
+    const expensesValue = _periodExpensesValue(period);
+    const profit = grossProfit - lossValue - expensesValue; // صافٍ، مطابق "Bénéfice net" بالتطبيق
     // الدين: لفترة "الكل" نستعمل رصيد الزبائن التراكمي الفعلي (نفس صفحة الديون)،
     // ولباقي الفترات نحسب دين كل فواتير الفترة شاملة الديون المبدئية (نفس منطق التطبيق تماماً)
     const debt = period === 'all'
       ? (_data?.customers || []).reduce((s, c) => s + Math.max(0, c.debt || 0), 0)
       : periodAll.reduce((s, x) => s + Math.max(0, (x.total || 0) - (x.paid || 0)), 0);
-    return { filtered, revenue, paid, returns, profit, debt, count: filtered.length };
+    return { filtered, revenue, paid, returns, profit, grossProfit, lossValue, expensesValue, debt, count: filtered.length };
   }
 
   // ── navigation ───────────────────────────────────────────────────────────
@@ -750,7 +763,13 @@ body {
     const total = products.length;
     const criticalCount = products.filter(p => (p.stock||0) <= 0).length;
     const warnCount = products.filter(p => (p.stock||0) > 0 && (p.stock||0) <= (p.minStock||5)).length;
-    const totalValue = products.reduce((s,p) => s + (p.stock||0)*(p.costPrice||0), 0);
+    const totalValue = products.reduce((s,p) => {
+      const stock = p.stock||0, cost = p.costPrice||0;
+      // نفس شرط التطبيق بالضبط (computeInventoryValueAndProfit): نتجاهل
+      // المخزون السالب/الصفري وتكلفة الشراء الفارغة حتى تطابق القيمة المعروضة
+      // في التطبيق تماماً بدل ما يُطرح المخزون السالب من المجموع.
+      return (stock > 0 && cost > 0) ? s + stock*cost : s;
+    }, 0);
     const okCount = total - criticalCount - warnCount;
 
     document.getElementById('inv-stats').innerHTML =
