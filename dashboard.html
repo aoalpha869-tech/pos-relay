@@ -339,6 +339,7 @@ body {
       <div class="conn-dot"></div>
       <span id="connTxt">جاري الاتصال...</span>
     </div>
+    <button class="btn-refresh" id="btnBackup" onclick="downloadBackup()" title="تنزيل نسخة احتياطية">⬇</button>
     <button class="btn-refresh" id="btnRefresh" onclick="loadAll()">↻</button>
   </div>
 </div>
@@ -579,6 +580,21 @@ body {
     setConn('connecting', `⏳ إعادة المحاولة خلال ${delay/1000}ث...`);
     _retryTimer = setTimeout(() => { _retryTimer = null; loadAll(true); }, delay);
   }
+
+  // ── تنزيل نسخة احتياطية من البيانات الحالية (المنتجات/المبيعات/الزبائن/إلخ) كملف JSON ──
+  window.downloadBackup = () => {
+    if (!_data) { alert('لا توجد بيانات محمّلة بعد — انتظر الاتصال أو اضغط تحديث أولاً'); return; }
+    const blob = new Blob([JSON.stringify(_data, null, 2)], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const ts   = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = `vendix-backup-${roomId.slice(0,8)}-${ts}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   window.loadAll = async (isRetry) => {
     if (!isRetry) { _retryCount = 0; if (_retryTimer) { clearTimeout(_retryTimer); _retryTimer = null; } }
