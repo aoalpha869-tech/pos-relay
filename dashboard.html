@@ -581,19 +581,47 @@ body {
     _retryTimer = setTimeout(() => { _retryTimer = null; loadAll(true); }, delay);
   }
 
-  // ── تنزيل نسخة احتياطية من البيانات الحالية (المنتجات/المبيعات/الزبائن/إلخ) كملف JSON ──
-  window.downloadBackup = () => {
-    if (!_data) { alert('لا توجد بيانات محمّلة بعد — انتظر الاتصال أو اضغط تحديث أولاً'); return; }
-    const blob = new Blob([JSON.stringify(_data, null, 2)], { type: 'application/json' });
-    const url  = URL.createObjectURL(blob);
-    const ts   = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
-    const a    = document.createElement('a');
-    a.href = url;
-    a.download = `vendix-backup-${roomId.slice(0,8)}-${ts}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  // ── تنزيل نسخة احتياطية كاملة (نفس دقة "تصدير نسخة احتياطية" داخل البرنامج نفسه) ──
+  // بخلاف بطاقات اللوحة (بيانات مبسّطة/lite للعرض السريع)، هذا الزر يستعمل جسر
+  // /api/relay الموجود أصلاً (يمرّر طلب REST لنقطة البيع عبر الغرفة) ليطلب
+  // /api/data مباشرة — وهي نفس نقطة النهاية التي يعتمدها البرنامج محلياً في وضع
+  // "عميل/سيرفر"، وتحتوي كل الجداول: منتجات، عملاء، موردين، مبيعات ومشتريات
+  // كاملة، مرتجعات (بالباركود أيضاً)، طلبيات، حجوزات، سجل المخزون، الفئات،
+  // الباقات، المستخدمين، الإعدادات الكاملة (بلا حاجة لأي تحديث فـ البرنامج نفسه)
+  window.downloadBackup = async () => {
+    const btn = document.getElementById('btnBackup');
+    if (btn.classList.contains('loading')) return; // طلب شغّال بالفعل
+    btn.classList.add('loading'); btn.disabled = true;
+    try {
+      const res = await fetch(`/api/relay/${roomId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Dash-Token': dashToken },
+        body: JSON.stringify({ method: 'GET', path: '/api/data' }),
+        signal: AbortSignal.timeout(130000)
+      });
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); } catch (e) { data = null; }
+      if (!res.ok) {
+        alert((data && data.error) || `تعذّر جلب النسخة الاحتياطية (HTTP ${res.status})`);
+        return;
+      }
+      if (!data) { alert('لم يتم استلام بيانات صالحة'); return; }
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url  = URL.createObjectURL(blob);
+      const ts   = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+      const a    = document.createElement('a');
+      a.href = url;
+      a.download = `vendix-backup-${roomId.slice(0,8)}-${ts}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert('تعذّر تنزيل النسخة الاحتياطية — تأكد من اتصال البرنامج ثم أعد المحاولة');
+    } finally {
+      btn.classList.remove('loading'); btn.disabled = false;
+    }
   };
 
   window.loadAll = async (isRetry) => {
