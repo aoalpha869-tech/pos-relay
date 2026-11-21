@@ -127,13 +127,14 @@ async function initDB() {
       last_seen     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       is_online     BOOLEAN NOT NULL DEFAULT FALSE,
       room_id       TEXT DEFAULT NULL,
-      token         TEXT DEFAULT NULL,
-      snapshot      JSONB DEFAULT NULL
+      token         TEXT DEFAULT NULL
     )
   `);
   await pool.query(`
     ALTER TABLE client_snapshots ADD COLUMN IF NOT EXISTS token TEXT DEFAULT NULL
   `).catch(() => {});
+  // إزالة عمود اللقطات القديم نهائياً (لا نخزّن أي بيانات POS في هذه القاعدة)
+  await pool.query(`ALTER TABLE client_snapshots DROP COLUMN IF EXISTS snapshot`).catch(() => {});
   console.log('[DB] جداول قاعدة البيانات جاهزة');
 }
 initDB().catch(err => console.error('[DB] فشل إنشاء الجداول:', err.message));
@@ -462,7 +463,7 @@ app.post('/api/admin/client-snapshot', rateLimit(30), requireAdmin, async (req, 
   const { key } = req.body;
   if (!key) return res.status(400).json({ error: 'key مطلوب' });
   try {
-    const result = await pool.query('SELECT * FROM client_snapshots WHERE license_key = $1', [key.toUpperCase().trim()]);
+    const result = await pool.query('SELECT license_key, last_seen, is_online, room_id FROM client_snapshots WHERE license_key = $1', [key.toUpperCase().trim()]);
     res.json({ ok: true, snapshot: result.rows[0] || null });
   } catch (err) { res.status(500).json({ error: 'فشل جلب البيانات' }); }
 });
@@ -485,13 +486,6 @@ app.get('/api/admin/client-live/:key', rateLimit(30), async (req, res) => {
   const reqId = crypto.randomBytes(8).toString('hex');
   try {
     const data = await posRequest(room, 'dashboard_full_request', reqId, 45000);
-    await pool.query(
-      `INSERT INTO client_snapshots (license_key, last_seen, is_online, room_id, snapshot)
-       VALUES ($1, NOW(), TRUE, $2, $3)
-       ON CONFLICT (license_key) DO UPDATE
-         SET last_seen = NOW(), is_online = TRUE, room_id = $2, snapshot = $3`,
-      [key, row.room_id, JSON.stringify(data)]
-    ).catch(() => {});
     res.json({ ok: true, live: true, data });
   } catch (e) {
     res.status(504).json({ error: 'انتهى وقت الانتظار' });
@@ -589,53 +583,15 @@ app.get('/api/dashboard-full/:roomId', async (req, res) => {
   if (!checkDashToken(room, req.query.token))
     return res.status(401).json({ error: 'توكن غير صالح' });
 
-  // ── نجرّب أولاً نرجّع آخر نسخة محفوظة فورياً (بلا انتظار) ──────────────
-  // ونطلق تحديث فالخلفية (بمهلة طويلة) بلا ما نخلّي المستخدم ينتظرها
-  let cached = null;
-  try {
-    const snap = await pool.query('SELECT snapshot, last_seen FROM client_snapshots WHERE room_id = $1', [roomId]);
-    if (snap.rows[0]?.snapshot) cached = snap.rows[0].snapshot;
-  } catch (e) {}
-
-  scheduleBackgroundRefresh(room, roomId); // fire-and-forget، لا ننتظرها
-
-  if (cached) {
-    res.json(cached);
-    return;
-  }
-
-  // ما كاين حتى نسخة محفوظة (أول مرة) — هنا فقط ننتظر الحساب الحي
+  // بلا أي تخزين: نطلب البيانات حيّة من الحاسوب كل مرة ولا نكتب شيئاً في القاعدة
   const reqId = crypto.randomBytes(8).toString('hex');
   try {
     const data = await posRequest(room, 'dashboard_full_request', reqId, 90000);
-    await pool.query(
-      `UPDATE client_snapshots SET snapshot = $1, last_seen = NOW() WHERE room_id = $2`,
-      [JSON.stringify(data), roomId]
-    ).catch(() => {});
     res.json(data);
   } catch (e) {
-    res.status(504).json({ error: e.message === 'timeout' ? 'انتهى وقت الانتظار — أول تحميل قد يطول، أعد المحاولة بعد قليل' : e.message });
+    res.status(504).json({ error: e.message === 'timeout' ? 'انتهى وقت الانتظار — أعد المحاولة بعد قليل' : e.message });
   }
 });
-
-// ── يطلب نسخة محدّثة فالخلفية بلا حجب أي طلب HTTP، بمهلة معقولة (Rate-limited) ──
-function scheduleBackgroundRefresh(room, roomId) {
-  const now = Date.now();
-  if (room._bgRefreshInFlight) return;                    // كاين طلب شغّال بالفعل
-  if (room._lastBgRefreshAt && now - room._lastBgRefreshAt < 60000) return; // لا تعيد قبل 60 ثانية
-  room._bgRefreshInFlight = true;
-  room._lastBgRefreshAt = now;
-  const reqId = 'bg_' + crypto.randomBytes(6).toString('hex');
-  posRequest(room, 'dashboard_full_request', reqId, 120000)
-    .then(data => {
-      return pool.query(
-        `UPDATE client_snapshots SET snapshot = $1, last_seen = NOW() WHERE room_id = $2`,
-        [JSON.stringify(data), roomId]
-      );
-    })
-    .catch(e => console.error('[bg-refresh]', roomId, e.message))
-    .finally(() => { room._bgRefreshInFlight = false; });
-}
 
 // ── جسر تشغيل نقطة البيع عن بُعد (الهاتف السحابي) — يمرّر طلب REST إلى الحاسوب عبر الغرفة
 app.post('/api/relay/:roomId', rateLimit(120), async (req, res) => {
@@ -685,24 +641,6 @@ wss.on('connection', (ws, req) => {
       `UPDATE client_snapshots SET is_online = TRUE, last_seen = NOW(), token = $2 WHERE room_id = $1`, [roomId, token]
     ).catch(() => {});
 
-    const autoReqId = 'auto_' + crypto.randomBytes(6).toString('hex');
-    setTimeout(() => {
-      if (ws.readyState !== 1) return;
-      const timer = setTimeout(() => room.pendingReqs.delete(autoReqId), 120000);
-      room.pendingReqs.set(autoReqId, {
-        timer,
-        resolve: async (data) => {
-          try {
-            await pool.query(
-              `UPDATE client_snapshots SET snapshot = $1, last_seen = NOW(), is_online = TRUE WHERE room_id = $2`,
-              [JSON.stringify(data), roomId]
-            );
-          } catch (e) { console.error('[snapshot] فشل حفظ البيانات:', e.message); }
-        },
-        reject: () => {}
-      });
-      ws.send(JSON.stringify({ type: 'dashboard_full_request', reqId: autoReqId }));
-    }, 3000);
 
     ws.on('message', raw => {
       const txt = raw.toString().trim();
@@ -775,30 +713,13 @@ app.get('/api/pos-poll/:roomId', rateLimit(600), async (req, res) => {
   }
 
   room.lastPollAt = Date.now();
-  pool.query(
-    `UPDATE client_snapshots SET is_online = TRUE, last_seen = NOW(), token = $2 WHERE room_id = $1`,
-    [roomId, token]
-  ).catch(() => {});
-
-  // أول اتصال poll لهاذ الغرفة: نطلب لقطة كاملة للوحة المتابعة باش تتحفظ فالقاعدة (كيفما WS)
-  if (!room._autoSnapshotDone) {
-    room._autoSnapshotDone = true;
-    const autoReqId = 'auto_' + crypto.randomBytes(6).toString('hex');
-    const timer = setTimeout(() => room.pendingReqs.delete(autoReqId), 120000);
-    room.pendingReqs.set(autoReqId, {
-      timer,
-      resolve: async (data) => {
-        try {
-          await pool.query(
-            `UPDATE client_snapshots SET snapshot = $1, last_seen = NOW(), is_online = TRUE WHERE room_id = $2`,
-            [JSON.stringify(data), roomId]
-          );
-        } catch (e) { console.error('[snapshot] فشل حفظ البيانات:', e.message); }
-      },
-      reject: () => {}
-    });
-    room.pollQueue.push({ type: 'dashboard_full_request', reqId: autoReqId });
+  if (!room._lastDbSeenAt || Date.now() - room._lastDbSeenAt > 300000) { // كتابة خفيفة كل 5 دقائق فقط
+    room._lastDbSeenAt = Date.now();
+    pool.query(
+      `UPDATE client_snapshots SET is_online = TRUE, last_seen = NOW(), token = $2 WHERE room_id = $1`, [roomId, token]
+    ).catch(() => {});
   }
+
 
   // لو كاين رسائل بالانتظار، رجّعها فوراً بلا ما نستنى
   if (room.pollQueue.length) {
