@@ -340,7 +340,7 @@ body {
       <span id="connTxt">جاري الاتصال...</span>
     </div>
     <button class="btn-refresh" id="btnBackup" onclick="downloadBackup()" title="تنزيل نسخة احتياطية">⬇</button>
-    <button class="btn-refresh" id="btnRefresh" onclick="loadAll()">↻</button>
+    <button class="btn-refresh" id="btnRefresh" onclick="loadAll(false, true)">↻</button>
   </div>
 </div>
 
@@ -571,13 +571,17 @@ body {
   // ── retry state ──────────────────────────────────────────────────────────
   let _retryCount = 0;
   let _retryTimer = null;
-  const RETRY_DELAYS = [5, 10, 20, 30]; // ثواني
+  const RETRY_DELAYS = [5, 10, 30, 60, 120]; // ثواني (تتباعد حتى لا نستهلك حصة السيرفر والمحل مغلق)
 
   function scheduleRetry() {
     if (_retryTimer) return;
     const delay = (RETRY_DELAYS[Math.min(_retryCount, RETRY_DELAYS.length-1)]) * 1000;
     _retryCount++;
-    setConn('connecting', `⏳ إعادة المحاولة خلال ${delay/1000}ث...`);
+    // إن كانت لدينا بيانات مخزّنة نُبقي ظاهراً أنها قديمة ومتى آخر تحديث، بدل أن تختفي هذه المعلومة
+    const _hasCache = (typeof _data !== 'undefined' && _data) && _meta && _meta.lastSync;
+    setConn('connecting', _hasCache
+      ? `📴 غير متصل · آخر تحديث ${fmtSyncTime(_meta.lastSync)} · إعادة المحاولة خلال ${delay/1000}ث`
+      : `⏳ إعادة المحاولة خلال ${delay/1000}ث...`);
     _retryTimer = setTimeout(() => { _retryTimer = null; loadAll(true); }, delay);
   }
 
@@ -624,7 +628,8 @@ body {
     }
   };
 
-  window.loadAll = async (isRetry) => {
+  // النمط الاحتياطي: تحميل كامل كما كان (يُستعمل فقط إن كان برنامج المحل قديماً ولا يدعم المزامنة التزايدية)
+  const loadLegacy = async (isRetry) => {
     if (!isRetry) { _retryCount = 0; if (_retryTimer) { clearTimeout(_retryTimer); _retryTimer = null; } }
     const btn = document.getElementById('btnRefresh');
     btn.classList.add('loading'); btn.disabled = true;
@@ -671,6 +676,216 @@ body {
   };
 
   // رسالة خطأ ناعمة — لا تمسح البيانات الموجودة على الشاشة
+  // ═══════════════════════════════════════════════════════════════════════
+  //  التخزين المحلي (IndexedDB) + المزامنة التزايدية
+  //  أول فتح: تنزيل كامل مرة واحدة على دفعات مضغوطة. بعدها نطلب فقط ما تغيّر منذ
+  //  آخر رقم تسلسلي (since). البيانات تبقى على هذا الجهاز: تظهر فوراً ولو كان المحل مغلقاً.
+  // ═══════════════════════════════════════════════════════════════════════
+  const SYNC_TABLES = ['products', 'customers', 'sales', 'purchases', 'expenses', 'stockLosses'];
+  const _mem = {};
+  SYNC_TABLES.forEach(t => { _mem[t] = new Map(); });
+  let _settings = {};
+  let _meta = { epoch: '', seq: 0, partial: false, lastSync: 0, deltaOk: false };
+  let _idb = null;
+  let _legacy = false;   // POS قديم لا يدعم /api/dashboard-delta
+  let _syncing = false;
+
+  function idbOpen() {
+    return new Promise(resolve => {
+      try {
+        if (!window.indexedDB) return resolve(null);
+        const req = indexedDB.open('vendix-dash-' + roomId, 1);
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          db.createObjectStore('meta');
+          SYNC_TABLES.forEach(t => db.createObjectStore(t, { keyPath: 'id' }));
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => resolve(null);
+        req.onblocked = () => resolve(null);
+      } catch (e) { resolve(null); }
+    });
+  }
+  function idbGetAll(store) {
+    return new Promise(resolve => {
+      try {
+        const r = _idb.transaction(store).objectStore(store).getAll();
+        r.onsuccess = () => resolve(r.result || []);
+        r.onerror = () => resolve([]);
+      } catch (e) { resolve([]); }
+    });
+  }
+  function idbGetMeta(key) {
+    return new Promise(resolve => {
+      try {
+        const r = _idb.transaction('meta').objectStore('meta').get(key);
+        r.onsuccess = () => resolve(r.result);
+        r.onerror = () => resolve(undefined);
+      } catch (e) { resolve(undefined); }
+    });
+  }
+  // كتابة ذرّية: إما تُحفظ الدفعة كاملة مع الرقم التسلسلي أو لا شيء
+  function idbCommit(d) {
+    return new Promise(resolve => {
+      if (!_idb) return resolve();
+      try {
+        const tx = _idb.transaction(['meta'].concat(SYNC_TABLES), 'readwrite');
+        if (d.reset) SYNC_TABLES.forEach(t => tx.objectStore(t).clear());
+        SYNC_TABLES.forEach(t => {
+          const st = tx.objectStore(t);
+          ((d.upserts && d.upserts[t]) || []).forEach(row => st.put(row));
+          ((d.deletes && d.deletes[t]) || []).forEach(id => st.delete(id));
+        });
+        const meta = tx.objectStore('meta');
+        meta.put(Object.assign({}, _meta), 'state');
+        if (d.reset || (d.settings && Object.keys(d.settings).length)) meta.put(Object.assign({}, _settings), 'settings');
+        tx.oncomplete = () => resolve();
+        tx.onerror = tx.onabort = () => resolve(); // التخزين اختياري: الفشل لا يوقف اللوحة
+      } catch (e) { resolve(); }
+    });
+  }
+
+  // يقرأ النسخة المخزّنة على الجهاز. يعيد true إن كانت كاملة وجاهزة للعرض
+  async function loadFromCache() {
+    _idb = await idbOpen();
+    if (!_idb) return false;
+    const st = await idbGetMeta('state');
+    if (!st || !st.epoch) return false;
+    const all = await Promise.all(SYNC_TABLES.map(idbGetAll));
+    SYNC_TABLES.forEach((t, i) => all[i].forEach(r => _mem[t].set(r.id, r)));
+    _settings = (await idbGetMeta('settings')) || {};
+    _meta = Object.assign(_meta, st);
+    return !_meta.partial; // مزامنة أولى لم تكتمل → لا نعرض بيانات ناقصة
+  }
+
+  // يطبّق دفعة فروقات على الذاكرة ثم يحفظها. يعيد true إن تغيّر شيء
+  async function applyDelta(d) {
+    let changed = !!d.reset;
+    if (d.reset) { SYNC_TABLES.forEach(t => _mem[t].clear()); _settings = {}; }
+    SYNC_TABLES.forEach(t => {
+      const up = (d.upserts && d.upserts[t]) || [];
+      const del = (d.deletes && d.deletes[t]) || [];
+      up.forEach(row => { _mem[t].set(row.id, row); });
+      del.forEach(id => { _mem[t].delete(id); });
+      if (up.length || del.length) changed = true;
+    });
+    if (d.settings && Object.keys(d.settings).length) { Object.assign(_settings, d.settings); changed = true; }
+    _meta.epoch = d.epoch;
+    _meta.seq = d.seq;
+    _meta.partial = !!d.more;
+    _meta.deltaOk = true;
+    if (!d.more) _meta.lastSync = (typeof d.refreshedAt === 'number' && d.refreshedAt > 0) ? d.refreshedAt : Date.now();
+    await idbCommit(d);
+    return changed;
+  }
+
+  // يبني الكائن الذي تعرضه الصفحات من النسخة المحلية (نفس الشكل الذي كان يأتي من /dashboard-full)
+  function buildData() {
+    const byIdDesc = (a, b) => b.id - a.id;
+    const products = Array.from(_mem.products.values());
+    _data = {
+      currency: _settings.currency || 'DA',
+      products: products,
+      customers: Array.from(_mem.customers.values()),
+      sales: Array.from(_mem.sales.values()).sort(byIdDesc),
+      purchases: Array.from(_mem.purchases.values()).sort(byIdDesc),
+      expenses: Array.from(_mem.expenses.values()),
+      stockLosses: Array.from(_mem.stockLosses.values()),
+      cash_drawer: _settings.cash_drawer || '0',
+      cash_history: _settings.cash_history || '[]',
+      low_stock: products
+        .filter(p => (p.stock || 0) <= (p.minStock != null ? p.minStock : 5))
+        .map(p => ({ name: p.name, quantity: p.stock, min_stock: p.minStock })),
+    };
+  }
+
+  function fmtSyncTime(ts) {
+    if (!ts) return '';
+    const d = new Date(ts);
+    return d.toLocaleDateString('ar-DZ', { day: 'numeric', month: 'short' }) + ' ' +
+           d.toLocaleTimeString('ar-DZ', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  // يجلب الفروقات حتى لا يبقى شيء. دفعات مضغوطة؛ وإن لم يتغير شيء يكون الرد بضع مئات من البايتات
+  let _lastOnline = true;
+  async function syncDelta(force) {
+    let changed = false;
+    for (let page = 0; page < 400; page++) {
+      const url = `/api/dashboard-delta/${roomId}?token=${encodeURIComponent(dashToken)}` +
+                  `&since=${_meta.seq}&epoch=${encodeURIComponent(_meta.epoch || '')}&limit=2000` + (force && page === 0 ? '&force=1' : '');
+      const res = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(45000) });
+      if (res.status === 503) { const e = new Error('offline'); e.kind = 'offline'; throw e; }
+      if (res.status === 202) { const e = new Error('pending'); e.kind = 'pending'; throw e; }
+      if (res.status === 504) { const e = new Error('timeout'); e.kind = 'timeout'; throw e; }
+      if (res.status === 401) { const e = new Error('رابط اللوحة غير صالح أو تغيّر — افتحه من جديد من البرنامج'); e.kind = 'auth'; throw e; }
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const d = await res.json();
+      if (d.error) throw new Error(d.error);
+      if (typeof d.seq !== 'number' || typeof d.epoch !== 'string') throw new Error('رد غير متوقع من البرنامج');
+      _lastOnline = d.online !== false;
+      if (await applyDelta(d)) changed = true;
+      if (!d.more) break;
+      const pct = d.max > 0 ? Math.min(99, Math.round(d.seq / d.max * 100)) : 0;
+      setConn('connecting', `⏳ تحميل البيانات لأول مرة… ${pct}%`);
+    }
+    return changed;
+  }
+
+  window.loadAll = async (isRetry, force) => {
+    if (_legacy) return loadLegacy(isRetry);
+    if (_syncing) return;
+    _syncing = true;
+    if (!isRetry) { _retryCount = 0; if (_retryTimer) { clearTimeout(_retryTimer); _retryTimer = null; } }
+    const btn = document.getElementById('btnRefresh');
+    btn.classList.add('loading'); btn.disabled = true;
+    setConn('connecting', _data ? '🔄 جاري التحديث...' : 'جاري التحديث...');
+    try {
+      const changed = await syncDelta(force === true);
+      if (changed || !_data) { buildData(); renderAll(); }
+      _retryCount = 0;
+      if (_lastOnline) setConn('connected', '✅ ' + nowTime());
+      else setConn('error', '📴 المحل غير متصل · بيانات من ' + fmtSyncTime(_meta.lastSync));
+    } catch (e) {
+      // برنامج المحل قديم (لا يعرف طلب المزامنة) ولم ننجح معه مرة من قبل → نعود للتحميل الكامل القديم
+      if (e.kind === 'timeout' && !_meta.deltaOk) {
+        _legacy = true; _syncing = false;
+        btn.classList.remove('loading'); btn.disabled = false;
+        return loadLegacy(true);
+      }
+      const retryIn = RETRY_DELAYS[Math.min(_retryCount, RETRY_DELAYS.length - 1)];
+      const last = _meta.lastSync ? ' · آخر تحديث ' + fmtSyncTime(_meta.lastSync) : '';
+      if (e.kind === 'pending') {
+        // السيرفر يسحب البيانات من برنامج المحل لأول مرة (قد يستغرق دقيقة): انتظار قصير ثابت
+        setConn('connecting', '⏳ جاري تحضير البيانات من برنامج المحل…');
+        if (!_data) renderErrorSoft('جاري تحضير البيانات لأول مرة', 'قد يستغرق ذلك دقيقة حسب سرعة إنترنت المحل');
+        if (!_retryTimer) _retryTimer = setTimeout(() => { _retryTimer = null; loadAll(true); }, 6000);
+        return;
+      }
+      if (e.kind === 'offline') {
+        setConn('error', '📴 المحل غير متصل' + last);
+        if (!_data) renderErrorSoft('برنامج المحل غير متصل بالإنترنت حالياً', `ستتم إعادة المحاولة خلال ${retryIn} ثانية...`);
+      } else if (e.kind === 'auth') {
+        setConn('error', '🔒 ' + e.message);
+        if (!_data) renderErrorSoft(e.message, '');
+        _syncing = false; btn.classList.remove('loading'); btn.disabled = false;
+        return; // لا فائدة من إعادة المحاولة
+      } else if (e.name === 'AbortError' || e.name === 'TimeoutError' || e.kind === 'timeout') {
+        setConn('error', '⏱ انتهى وقت الاتصال' + last);
+        if (!_data) renderErrorSoft('انتهى وقت الاتصال', 'البرنامج لا يستجيب — ستتم إعادة المحاولة تلقائياً');
+      } else if (e.message && (e.message.includes('Failed to fetch') || e.message.includes('NetworkError'))) {
+        setConn('error', '🌐 لا يوجد إنترنت' + last);
+        if (!_data) renderErrorSoft('لا يوجد اتصال بالإنترنت', 'ستتم إعادة المحاولة تلقائياً');
+      } else {
+        setConn('error', '❌ ' + (e.message || 'خطأ'));
+        if (!_data) renderErrorSoft(e.message || 'خطأ', '');
+      }
+      scheduleRetry();
+    } finally {
+      _syncing = false;
+      if (!_legacy) { btn.classList.remove('loading'); btn.disabled = false; } // في النمط الاحتياطي تتولاه loadLegacy
+    }
+  };
+
   function renderErrorSoft(title, hint) {
     const activePage = document.querySelector('.page.active')?.id?.replace('page-','') || 'home';
     // فقط إذا الصفحة فارغة (لم تُحمَّل بيانات بعد)
@@ -1062,9 +1277,19 @@ body {
   }
 
   // ── start ─────────────────────────────────────────────────────────────────
-  loadAll();
-  // تحديث كل دقيقة — إذا كان POS متصل
-  setInterval(() => { if (!_retryTimer) loadAll(); }, 60000);
+  // 1) اعرض النسخة المخزّنة على الجهاز فوراً (إن وُجدت) 2) ثم زامن في الخلفية بالفروقات فقط
+  (async () => {
+    try {
+      if (await loadFromCache()) {
+        buildData(); renderAll();
+        setConn('connecting', '📦 بيانات مخزّنة · آخر تحديث ' + fmtSyncTime(_meta.lastSync));
+      }
+    } catch (e) { /* نتجاهل: نكمل بالتحميل العادي */ }
+    loadAll();
+  })();
+  // مزامنة كل دقيقة والصفحة ظاهرة فقط (الفروقات صغيرة جداً) — وفور العودة إلى الصفحة
+  setInterval(() => { if (!_retryTimer && !document.hidden) loadAll(); }, 60000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && !_retryTimer) loadAll(); });
 })();
 </script>
 </body>

@@ -22,6 +22,7 @@ const path      = require('path');
 const fs        = require('fs');
 const { Pool }  = require('pg');
 const crypto    = require('crypto');
+const zlib      = require('zlib');
 
 // ─────────────────────────────────────────────
 //  تحقق إجباري من ADMIN_SECRET عند الإقلاع
@@ -545,11 +546,11 @@ function sendToPos(room, obj) {
   }
 }
 
-async function posRequest(room, type, reqId, timeout = 12000) {
+async function posRequest(room, type, reqId, timeout = 12000, extra = null) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => { room.pendingReqs.delete(reqId); reject(new Error('timeout')); }, timeout);
     room.pendingReqs.set(reqId, { resolve, reject, timer });
-    sendToPos(room, { type, reqId });
+    sendToPos(room, extra ? Object.assign({}, extra, { type, reqId }) : { type, reqId });
   });
 }
 
@@ -590,6 +591,220 @@ app.get('/api/dashboard-full/:roomId', async (req, res) => {
     res.json(data);
   } catch (e) {
     res.status(504).json({ error: e.message === 'timeout' ? 'انتهى وقت الانتظار — أعد المحاولة بعد قليل' : e.message });
+  }
+});
+
+// ═════════════════════════════════════════════════════════════════════════
+//  مزامنة تزايدية للوحة المتابعة — بدون أي تعديل على برنامج المحل
+//
+//  كيف تعمل (النمط الافتراضي، يعمل مع كل النسخ المباعة):
+//   1) الـ relay يطلب من برنامج المحل النسخة الكاملة (dashboard_full_request) كما كان،
+//      لكن مرة كل DASH_REFRESH_MS كحد أقصى لكل غرفة ومن يتفرج فقط (وليس مع كل طلب من كل جهاز).
+//   2) يحسب بصمة (hash) لكل صف ويقارنها بالمرة السابقة → الجديد/المعدّل/المحذوف فقط.
+//   3) يحفظ الفروقات في سجل مضغوط بالذاكرة (لا قاعدة بيانات)، ويقدّمها للأجهزة بحسب
+//      آخر رقم وصلها (since). الجهاز الجديد يستلم سجل البداية الكامل مقسّماً على صفحات.
+//   4) الأجهزة تخزّن البيانات محلياً (IndexedDB) فلا تعيد تنزيل شيء.
+//  وإن كان برنامج المحل محدَّثاً ويعرف dashboard_delta_request نمرّره إليه مباشرة (أخف على المحل).
+// ═════════════════════════════════════════════════════════════════════════
+const DASH_REFRESH_MS   = parseInt(process.env.DASH_REFRESH_MS, 10)   || 180000;   // أقصى تكرار لسحب النسخة الكاملة من المحل
+const DASH_FORCE_MIN_MS = parseInt(process.env.DASH_FORCE_MIN_MS, 10) || 20000;    // أقل مدة بين تحديثين يدويين
+const DASH_PROBE_MS     = parseInt(process.env.DASH_PROBE_MS, 10)     || 8000;     // مهلة اختبار دعم المزامنة الأصلية
+const DASH_PAGE_ROWS    = parseInt(process.env.DASH_PAGE_ROWS, 10)    || 2000;     // صفوف كل صفحة
+const DASH_COMPACT_MIN  = parseInt(process.env.DASH_COMPACT_BYTES, 10) || 16 * 1024 * 1024; // حد ضغط السجل (يُعاد بناؤه من الصفر)
+const DASH_TABLES = ['products', 'customers', 'sales', 'purchases', 'expenses', 'stockLosses'];
+const DASH_SETTINGS = ['currency', 'cash_drawer', 'cash_history'];
+
+const gzipAsync   = (buf, level) => new Promise((resolve, reject) => zlib.gzip(buf, { level: level || 6 }, (e, b) => e ? reject(e) : resolve(b)));
+const gunzipAsync = (buf) => new Promise((resolve, reject) => zlib.gunzip(buf, (e, b) => e ? reject(e) : resolve(b)));
+
+async function sendJsonStringMaybeGzip(req, res, str) {
+  const body = Buffer.from(str);
+  res.set('Content-Type', 'application/json; charset=utf-8');
+  res.set('Cache-Control', 'no-store');
+  res.set('Vary', 'Accept-Encoding');
+  if (body.length > 1024 && /\bgzip\b/.test(req.headers['accept-encoding'] || '')) {
+    res.set('Content-Encoding', 'gzip');
+    return res.send(await gzipAsync(body, 4));
+  }
+  return res.send(body);
+}
+const sendJsonMaybeGzip = (req, res, obj) => sendJsonStringMaybeGzip(req, res, JSON.stringify(obj));
+
+const rowHash = (row) => crypto.createHash('md5').update(JSON.stringify(row)).digest('base64').slice(0, 12);
+
+// سحب النسخ الكاملة من المحلات واحدة بعد الأخرى (حماية ذاكرة الخطة المجانية 512MB)
+let _refreshChain = Promise.resolve();
+function enqueueRefresh(fn) {
+  const p = _refreshChain.then(fn, fn);
+  _refreshChain = p.catch(() => {});
+  return p;
+}
+
+/** يحوّل (upserts, deletes, settings) إلى صفحات مضغوطة. كل صفحة = نص JSON بلا الأقواس الأولى ولا حقول الوصف */
+async function buildPages(upserts, deletes, settings) {
+  const pages = [];
+  let first = true;
+  const push = async (up) => {
+    const obj = { upserts: up, deletes: first ? deletes : {}, settings: first ? settings : {} };
+    first = false;
+    const inner = JSON.stringify(obj).slice(1); // يبدأ بـ "upserts": وينتهي بـ }
+    pages.push(await gzipAsync(Buffer.from(inner), 6));
+  };
+  for (const t of DASH_TABLES) {
+    const rows = upserts[t] || [];
+    for (let i = 0; i < rows.length; i += DASH_PAGE_ROWS) await push({ [t]: rows.slice(i, i + DASH_PAGE_ROWS) });
+  }
+  if (first && (Object.keys(deletes).length || Object.keys(settings).length)) await push({});
+  return pages;
+}
+
+/** يدخل نسخة كاملة جديدة من المحل: يحسب الفروقات ويضيفها للسجل (أو يعيد بناءه عند الحاجة) */
+async function ingestSnapshot(room, data) {
+  const cur = { hashes: {}, rows: {}, settings: {} };
+  const upserts = {}, deletes = {};
+  const prev = room.sync;
+  let anyPrev = !!prev;
+  for (const t of DASH_TABLES) {
+    const arr = Array.isArray(data[t]) ? data[t] : [];
+    const hm = new Map();
+    const changed = [];
+    const old = prev ? prev.hashes[t] : null;
+    for (const row of arr) {
+      if (!row || typeof row.id !== 'number') continue;
+      const h = rowHash(row);
+      hm.set(row.id, h);
+      if (!old || old.get(row.id) !== h) changed.push(row);
+    }
+    cur.hashes[t] = hm;
+    if (changed.length) upserts[t] = changed;
+    if (old) {
+      const dels = [];
+      for (const id of old.keys()) if (!hm.has(id)) dels.push(id);
+      if (dels.length) deletes[t] = dels;
+    }
+  }
+  const settings = {};
+  for (const k of DASH_SETTINGS) {
+    const v = data[k];
+    if (typeof v !== 'string') continue;
+    const h = rowHash(v);
+    cur.settings[k] = h;
+    if (!prev || prev.settingHashes[k] !== h) settings[k] = v;
+  }
+
+  const hasChanges = Object.keys(upserts).length || Object.keys(deletes).length || Object.keys(settings).length;
+  if (prev && !hasChanges) { prev.refreshedAt = Date.now(); return; }
+
+  // أول مرة أو السجل كبر كثيراً → نبدأ سجلاً جديداً (epoch جديد) من النسخة الحالية كاملة
+  const needRebuild = !prev || (prev.logBytes > Math.max(DASH_COMPACT_MIN, 3 * prev.baseBytes));
+  if (needRebuild) {
+    const fullUp = {};
+    for (const t of DASH_TABLES) if (Array.isArray(data[t])) fullUp[t] = data[t].filter(r => r && typeof r.id === 'number');
+    const fullSet = {};
+    for (const k of DASH_SETTINGS) if (typeof data[k] === 'string') fullSet[k] = data[k];
+    const pages = await buildPages(fullUp, {}, fullSet);
+    const bytes = pages.reduce((n, b) => n + b.length, 0);
+    room.sync = {
+      epoch: crypto.randomBytes(6).toString('hex'),
+      pages, seq: pages.length, baseBytes: bytes, logBytes: bytes,
+      hashes: cur.hashes, settingHashes: cur.settings, refreshedAt: Date.now(),
+    };
+    console.log(`[dash-sync] room log rebuilt: ${pages.length} pages, ${(bytes / 1048576).toFixed(1)}MB gz`);
+    return;
+  }
+  const pages = await buildPages(upserts, deletes, settings);
+  prev.pages.push(...pages);
+  prev.seq = prev.pages.length;
+  prev.logBytes += pages.reduce((n, b) => n + b.length, 0);
+  prev.hashes = cur.hashes;
+  prev.settingHashes = Object.assign({}, prev.settingHashes, cur.settings);
+  prev.refreshedAt = Date.now();
+  console.log(`[dash-sync] +${pages.length} pages, log=${(prev.logBytes / 1024).toFixed(0)}KB (base ${(prev.baseBytes / 1024).toFixed(0)}KB)`);
+}
+
+/** يبدأ (أو ينضم إلى) تحديث جارٍ من المحل */
+function startRefresh(room, roomId) {
+  if (room.refreshing) return room.refreshing;
+  room.refreshing = enqueueRefresh(async () => {
+    const reqId = crypto.randomBytes(8).toString('hex');
+    const data = await posRequest(room, 'dashboard_full_request', reqId, 90000);
+    if (!data || data.error) throw new Error((data && data.error) || 'empty response');
+    await ingestSnapshot(room, data);
+    room.nextRefreshAllowedAt = 0;
+  }).catch(e => {
+    room.nextRefreshAllowedAt = Date.now() + 30000; // لا نلحّ على محل متعثّر
+    console.warn(`[dash-sync] refresh failed room=${roomId}: ${e.message}`);
+  }).finally(() => { room.refreshing = null; });
+  return room.refreshing;
+}
+
+async function serveFromLog(req, res, room, since, epoch, online) {
+  const st = room.sync;
+  let reset = false, from = since;
+  if (epoch !== st.epoch || since < 0 || since > st.seq) { reset = true; from = 0; }
+  const head = (seq, more) =>
+    `{"epoch":${JSON.stringify(st.epoch)},"reset":${reset},"seq":${seq},"max":${st.seq},"more":${more},` +
+    `"refreshedAt":${st.refreshedAt},"online":${online},`;
+  if (from >= st.pages.length) {
+    // لا جديد
+    return sendJsonStringMaybeGzip(req, res, head(from, false) + '"upserts":{},"deletes":{},"settings":{}}');
+  }
+  const inner = (await gunzipAsync(st.pages[from])).toString('utf8');
+  const seq = from + 1;
+  return sendJsonStringMaybeGzip(req, res, head(seq, seq < st.seq) + inner);
+}
+
+app.get('/api/dashboard-delta/:roomId', rateLimit(300), async (req, res) => {
+  const roomId = req.params.roomId;
+  const room = getRoom(roomId);
+  const connected = posConnected(room);
+  if (!room.token) return res.status(503).json({ error: 'POS غير متصل حالياً' }); // لا يمكن التحقق من التوكن بعد
+  if (!checkDashToken(room, req.query.token))
+    return res.status(401).json({ error: 'توكن غير صالح' });
+  const since = Math.max(0, parseInt(req.query.since, 10) || 0);
+  const epoch = String(req.query.epoch || '').slice(0, 64);
+  const limit = Math.min(5000, Math.max(200, parseInt(req.query.limit, 10) || 2000));
+  const force = req.query.force === '1';
+
+  try {
+    // ── برنامج محل محدَّث يدعم المزامنة الأصلية: نمرّر له الطلب مباشرة ──
+    if (connected && room.native === false && Date.now() - (room.nativeAt || 0) > 6 * 3600 * 1000) room.native = undefined; // إعادة اختبار كل 6 ساعات
+    if (connected && room.native !== false) {
+      const reqId = crypto.randomBytes(8).toString('hex');
+      try {
+        const data = await posRequest(room, 'dashboard_delta_request', reqId, room.native === true ? 30000 : DASH_PROBE_MS, { since, epoch, limit });
+        if (data && typeof data.seq === 'number' && typeof data.epoch === 'string') {
+          room.native = true; room.nativeAt = Date.now();
+          return await sendJsonMaybeGzip(req, res, data);
+        }
+        if (room.native === true) return await sendJsonMaybeGzip(req, res, data || { error: 'empty' });
+        room.native = false; room.nativeAt = Date.now(); // رد غير مفهوم → نمط الفروقات من جهة السيرفر
+      } catch (e) {
+        if (e.message !== 'timeout') throw e;
+        if (room.native === true) throw e;
+        room.native = false; room.nativeAt = Date.now(); // لا يردّ → برنامج قديم
+        console.log(`[dash-sync] room=${roomId}: POS has no native delta → relay-side diff mode`);
+      }
+    }
+
+    // ── النمط العام: الـ relay يحسب الفروقات من النسخة الكاملة ──
+    const now = Date.now();
+    const age = room.sync ? now - room.sync.refreshedAt : Infinity;
+    const stale = age > DASH_REFRESH_MS;
+    const wantForce = force && age > DASH_FORCE_MIN_MS;
+    if (connected && (stale || wantForce) && now >= (room.nextRefreshAllowedAt || 0)) {
+      const p = startRefresh(room, roomId);
+      if (!room.sync) await Promise.race([p, new Promise(r => setTimeout(r, 25000))]);     // أول مرة: ننتظر قليلاً
+      else if (wantForce) await Promise.race([p, new Promise(r => setTimeout(r, 20000))]); // تحديث يدوي: ننتظر قليلاً
+      // وإلا: نقدّم ما عندنا الآن والتحديث يجري في الخلفية (يصل في الطلب التالي)
+    }
+    if (!room.sync) {
+      if (connected) return res.status(202).json({ pending: true });
+      return res.status(503).json({ error: 'POS غير متصل حالياً' });
+    }
+    return await serveFromLog(req, res, room, since, epoch, connected);
+  } catch (e) {
+    res.status(504).json({ error: e.message === 'timeout' ? 'timeout' : e.message });
   }
 });
 
@@ -647,7 +862,7 @@ wss.on('connection', (ws, req) => {
       try {
         const msg = JSON.parse(txt);
         if (msg.type === 'ping') { ws.send(JSON.stringify({ type: 'pong' })); return; }
-        if ((msg.type === 'dashboard_response' || msg.type === 'dashboard_full_response' || msg.type === 'api_response') && msg.reqId) {
+        if ((msg.type === 'dashboard_response' || msg.type === 'dashboard_full_response' || msg.type === 'dashboard_delta_response' || msg.type === 'api_response') && msg.reqId) {
           const pending = room.pendingReqs.get(msg.reqId);
           if (pending) {
             clearTimeout(pending.timer);
