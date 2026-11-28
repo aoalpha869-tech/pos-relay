@@ -828,7 +828,17 @@ app.post('/api/relay/:roomId', rateLimit(120), async (req, res) => {
       sendToPos(room, { type: 'api_request', reqId, method: method || 'GET', path, body: body || '' });
     });
     const status = (result && result.status) || 200;
-    res.status(status).type('application/json').send((result && result.body) || '{}');
+    const outBody = Buffer.from((result && result.body) || '{}');
+    res.status(status);
+    res.set('Content-Type', 'application/json; charset=utf-8');
+    res.set('Vary', 'Accept-Encoding');
+    // ضغط gzip لردود المحل الكبيرة (مثل /api/data): يقلل النطاق الصادر من Render عدة أضعاف.
+    // المتصفح/WebView يفك الضغط تلقائياً ولا يحتاج العميل لأي تعديل.
+    if (outBody.length > 1024 && /\bgzip\b/.test(req.headers['accept-encoding'] || '')) {
+      res.set('Content-Encoding', 'gzip');
+      return res.send(await gzipAsync(outBody, 4));
+    }
+    res.send(outBody);
   } catch (e) {
     res.status(504).json({ error: e.message === 'timeout' ? 'انتهى وقت الانتظار' : e.message });
   }
